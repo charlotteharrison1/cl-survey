@@ -231,7 +231,8 @@ input[type=text]:focus { outline: none; border-color: var(--red); box-shadow: 0 
 <script>
 // ---- Edit these ----
 const CONFIG = {
-  endpoint: 'https://script.google.com/macros/s/AKfycbwDvPU7n4eQRbz6KC6J2fJIMDtrndFZf7yUcj0EdKmASGOiO_rW51ysah_CYdBHL0qI/exec',            // paste your Apps Script web app URL here (see apps-script/Code.gs)
+  supabaseUrl: '',         // your Supabase project URL, e.g. https://abcdxyz.supabase.co (see supabase/setup.sql)
+  supabaseKey: '',         // your Supabase public key (the anon / publishable key). Safe to put here.
   eventName: 'The Campaign Fringe',  // shown in the heading
   prize: 'a prize',        // shown under the wheel and on the win screen
 };
@@ -276,9 +277,9 @@ let qi = 0, draft = null, coins = 0, used = 0, busy = false, spinning = false, w
 
 $('evt').textContent = CONFIG.eventName;
 $('winPrize').textContent = CONFIG.prize;
-$('foot').textContent = CONFIG.endpoint ? 'Your answers are saved as you go.' : 'Demo mode: nothing is being saved yet. Add your endpoint in index.html.';
+$('foot').textContent = CONFIG.supabaseUrl ? 'Your answers are saved as you go.' : 'Demo mode: nothing is being saved yet. Add your Supabase details in index.html.';
 
-// ---- backend (Google Apps Script, or a local stand-in when no endpoint is set) ----
+// ---- backend (Supabase, or a local stand-in when no Supabase details are set) ----
 let chain = Promise.resolve();
 // Saves go through one line so they arrive in order. Spinning never uses it.
 const queue = fn => { pendingCalls++; const p = chain.then(fn); chain = p.catch(() => {}).then(() => { pendingCalls--; }); return p; };
@@ -295,12 +296,14 @@ async function demoApi(b) {
 }
 async function api(body, tries = 3) {
   body.email = email; body.shown = used;
-  if (!CONFIG.endpoint) return demoApi(body);
+  if (!CONFIG.supabaseUrl) return demoApi(body);
+  const headers = { 'Content-Type': 'application/json', apikey: CONFIG.supabaseKey };
+  if (CONFIG.supabaseKey.startsWith('eyJ')) headers.Authorization = 'Bearer ' + CONFIG.supabaseKey;   // older JWT-style keys
   for (let t = 1; ; t++) {
     try {
-      const r = await fetch(CONFIG.endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
-      const j = await r.json();
-      if (j.error) throw Object.assign(new Error(j.error), { fatal: true });
+      const r = await fetch(CONFIG.supabaseUrl.replace(/\/$/, '') + '/rest/v1/rpc/survey', { method: 'POST', headers, body: JSON.stringify({ req: body }), signal: AbortSignal.timeout(15000) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw Object.assign(new Error(j.message || 'Server error ' + r.status), { fatal: r.status < 500 && r.status !== 429 });
       return j;
     } catch (e) { if (e.fatal || t >= tries) throw e; await sleep(700 * t); }
   }
@@ -581,7 +584,6 @@ card.addEventListener('input', e => {
 });
 
 renderTray(); renderCard();
-if (CONFIG.endpoint) fetch(CONFIG.endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: '{"action":"warm"}' }).catch(() => {});
 </script>
 </body>
 </html>
