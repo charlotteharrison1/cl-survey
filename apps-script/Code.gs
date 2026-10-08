@@ -94,31 +94,37 @@ function handle(r) {
     set('Step', Math.max(Number(get('Step')) || 0, Math.min(NQ, Number(r.step) || 0)));
     if (any) earn(r.q);
   } else if (r.action === 'seen') {
-    // the page reports how many drawn results the person has actually watched
-    set('Spins shown', Math.max(Number(get('Spins shown')) || 0, Math.min(Number(get('Spins used')) || 0, Number(r.n) || 0)));
+    // nothing to do: the watched count in r.shown is applied below for every request
   } else if (r.action === 'bonus') {
     if ((Number(get('Step')) || 0) < NQ) throw new Error('Finish the questions first');
     earn('bonus');
   } else if (r.action === 'spin') {
-    const used = Number(get('Spins used')) || 0;
-    if (used >= (Number(get('Coins')) || 0)) throw new Error('No spins left');
-    const prizes = data.filter((y, i) => i > 0 && y[col('Prize won') - 1] === 'YES').length;
-    // Slice 0 is the gold one. The wheel draws 50 slices but gold comes up 1 time in WIN_ODDS.
-    const gold = Math.floor(Math.random() * WIN_ODDS) === 0 && prizes < PRIZE_LIMIT;
-    const slice = gold ? 0 : 1 + Math.floor(Math.random() * (SLICES - 1));
-    set('Spins used', used + 1);
-    set('Spin results', [get('Spin results'), slice].filter(y => y !== '').join(' '));   // space-separated so Sheets keeps it as text
-    if (slice === 0) set('Prize won', 'YES');
-    save();
-    return { slice: slice, won: slice === 0, coins: Number(get('Coins')), used: used + 1 };
+    if ((Number(get('Spins used')) || 0) >= (Number(get('Coins')) || 0)) throw new Error('No spins left');
   } else throw new Error('Unknown action');
 
+  // Draw a result for every coin earned and not yet drawn, in this same request.
+  // Slice 0 is the gold one. The wheel draws 50 slices but gold comes up 1 time in WIN_ODDS.
+  let used = Number(get('Spins used')) || 0;
+  const coinsNow = Number(get('Coins')) || 0;
+  if (used < coinsNow) {
+    let golds = data.filter((y, i) => i > 0 && y[col('Prize won') - 1] === 'YES').length;
+    const list = String(get('Spin results')).split(/[ ,]+/).filter(x => x !== '');
+    while (used < coinsNow) {
+      const gold = Math.floor(Math.random() * WIN_ODDS) === 0 && golds < PRIZE_LIMIT;
+      if (gold) { golds++; set('Prize won', 'YES'); }
+      list.push(gold ? 0 : 1 + Math.floor(Math.random() * (SLICES - 1)));
+      used++;
+    }
+    set('Spins used', used);
+    set('Spin results', list.join(' '));   // space-separated so Sheets keeps it as text
+  }
+  if (r.shown) set('Spins shown', Math.max(Number(get('Spins shown')) || 0, Math.min(used, Number(r.shown) || 0)));
   save();
   return {
-    coins: Number(get('Coins')) || 0, used: Number(get('Spins used')) || 0, step: Number(get('Step')) || 0,
+    coins: Number(get('Coins')) || 0, used: used, step: Number(get('Step')) || 0,
     won: get('Prize won') === 'YES', bonus: earned().indexOf('bonus') >= 0, earned: earned(),
     talks: String(get('Talks attended')).split(' | ').filter(Boolean),
     shown: Number(get('Spins shown')) || 0,
-    pending: String(get('Spin results')).split(/[ ,]+/).filter(x => x !== '').map(Number).slice(Number(get('Spins shown')) || 0),
+    results: String(get('Spin results')).split(/[ ,]+/).filter(x => x !== '').map(Number),
   };
 }

@@ -35,7 +35,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 h1 { margin: 0; font: 400 clamp(38px, 6.5vw, 64px)/1.02 var(--display); text-transform: uppercase; letter-spacing: .01em; color: var(--accent-text); text-wrap: balance; }
 .lede { margin: 12px 0 0; color: var(--muted); max-width: 52ch; }
 .grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; align-items: start; }
-@media (min-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; } .stage { position: sticky; top: 24px; } }
+@media (min-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; } .stage { position: sticky; top: 24px; order: 2; } .card { order: 1; } }
 
 /* wheel */
 .stage { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
@@ -242,7 +242,7 @@ const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 let email = '';
 let saved = ''; try { saved = localStorage.getItem('email') || ''; } catch (e) {}
 
-let qi = 0, draft = null, coins = 0, used = 0, busy = false, spinning = false, waiting = false, ready = [], inflight = 0, lastSpinErr = '', won = false, started = false, rot = 0, lastMsg = -1;
+let qi = 0, draft = null, coins = 0, used = 0, busy = false, spinning = false, waiting = false, drawn = [], pendingCalls = 0, won = false, started = false, rot = 0, lastMsg = -1;
 
 $('evt').textContent = CONFIG.eventName;
 $('winPrize').textContent = CONFIG.prize;
@@ -250,21 +250,22 @@ $('foot').textContent = CONFIG.endpoint ? 'Your answers are saved as you go.' : 
 
 // ---- backend (Google Apps Script, or a local stand-in when no endpoint is set) ----
 let chain = Promise.resolve();
-const queue = fn => { const p = chain.then(fn); chain = p.catch(() => {}); return p; };
-const demo = { earned: {}, used: 0, step: 0 };
+// Saves go through one line so they arrive in order. Spinning never uses it.
+const queue = fn => { pendingCalls++; const p = chain.then(fn); chain = p.catch(() => {}).then(() => { pendingCalls--; }); return p; };
+const demo = { earned: {}, step: 0, results: [], shown: 0 };
 const dCoins = () => Object.keys(demo.earned).length;
 const has = v => typeof v === 'string' ? v.trim() !== '' : Array.isArray(v) ? v.length > 0 : !!v && (Object.keys(v.ratings || {}).length > 0 || String(v.feedback || '').trim() !== '');
 async function demoApi(b) {
   await sleep(250);
-  const st = () => ({ coins: dCoins(), used: demo.used, step: demo.step, won: false, bonus: !!demo.earned.bonus, talks: [], earned: Object.keys(demo.earned), shown: 0, pending: [] });
-  if (b.action === 'start') return st();
-  if (b.action === 'answer') { demo.step = Math.max(demo.step, b.step); if (has(b.value)) demo.earned[b.q] = 1; return st(); }
-  if (b.action === 'bonus') { demo.earned.bonus = 1; return st(); }
-  if (b.action === 'spin') { if (demo.used >= dCoins()) throw new Error('No spins left'); demo.used++; const s = Math.floor(Math.random() * ODDS) === 0 ? 0 : 1 + Math.floor(Math.random() * (SLICES - 1)); return Object.assign(st(), { slice: s, won: s === 0 }); }
-  return st();
+  if (b.shown) demo.shown = Math.max(demo.shown, b.shown);
+  if (b.action === 'answer') { demo.step = Math.max(demo.step, b.step); if (has(b.value)) demo.earned[b.q] = 1; }
+  else if (b.action === 'bonus') demo.earned.bonus = 1;
+  else if (b.action === 'spin' && demo.results.length >= dCoins()) throw new Error('No spins left');
+  while (demo.results.length < dCoins()) demo.results.push(Math.floor(Math.random() * ODDS) === 0 ? 0 : 1 + Math.floor(Math.random() * (SLICES - 1)));
+  return { coins: dCoins(), used: demo.results.length, step: demo.step, won: demo.results.includes(0), bonus: !!demo.earned.bonus, talks: [], earned: Object.keys(demo.earned), shown: demo.shown, results: demo.results.slice() };
 }
 async function api(body, tries = 3) {
-  body.email = email;
+  body.email = email; body.shown = used;
   if (!CONFIG.endpoint) return demoApi(body);
   for (let t = 1; ; t++) {
     try {
@@ -381,17 +382,9 @@ function flyCoin(from, idx) {
   anim.onfinish = () => { el.remove(); slot.classList.remove('pending'); };
 }
 const MISS = ['Not this one. The next spin is a fresh 1 in 50.', 'Almost felt like it. Try again.', 'Pink this time, gold next time.', 'The wheel says no. The wheel is fickle.', 'No prize yet, but that was a great spin.'];
-// Spin results are drawn by the server as soon as a coin is earned, while the person reads the next question.
-function topUp() {
-  const want = coins - used - ready.length - inflight;
-  for (let i = 0; i < want; i++) {
-    inflight++;
-    queue(() => api({ action: 'spin' }, 1))
-      .then(r => { ready.push(r); coins = Math.max(coins, r.coins); })
-      .catch(e => { lastSpinErr = e.message; })
-      .finally(() => { inflight--; });
-  }
-}
+// The server draws each spin result in the same request that saves the answer, so the page already holds it
+// when the person presses spin. Normally spinning makes no request of its own.
+const absorb = r => { if (r.results && r.results.length > drawn.length) drawn = r.results; coins = Math.max(coins, r.coins); };
 async function spin() {
   if (spinning) return;
   if (coins - used <= 0) {
@@ -401,25 +394,25 @@ async function spin() {
   spinning = true; $('result').textContent = ''; renderTray();
   $('stage').scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
   try {
-    let res = ready.shift();
-    if (!res) {                                   // not drawn yet: wait for the server (the wheel stays still)
-      waiting = true; renderTray(); lastSpinErr = ''; topUp();
+    if (drawn.length <= used) {                   // the save that carries this result has not come back yet
+      waiting = true; renderTray();
       const t0 = Date.now();
-      while (!ready.length && inflight > 0 && Date.now() - t0 < 25000) await sleep(100);
-      res = ready.shift();
-      if (!res) throw new Error(lastSpinErr || 'timeout');
+      while (drawn.length <= used && pendingCalls > 0 && Date.now() - t0 < 25000) await sleep(100);
+      if (drawn.length <= used) absorb(await api({ action: 'spin' }, 1));   // last resort: ask for the draw directly
+      if (drawn.length <= used) throw new Error('timeout');
       waiting = false; renderTray();
     }
-    res = await runSpin(() => Promise.resolve(res));
+    const slice = drawn[used];
+    const res = await runSpin(() => Promise.resolve({ slice, won: slice === 0 }));
     used++;
-    queue(() => api({ action: 'seen', n: used })).catch(() => {});
+    api({ action: 'seen' }, 1).catch(() => {});   // tell the server how many results were watched; nothing waits on it
     if (res.won) { won = true; $('result').textContent = 'Gold! You won ' + CONFIG.prize + '.'; confetti(); showWin(); }
     else {
       let m; do { m = Math.floor(Math.random() * MISS.length); } while (m === lastMsg); lastMsg = m;
       $('result').textContent = (res.slice === 1 || res.slice === SLICES - 1) ? 'So close! One slice away from gold.' : MISS[m];
     }
   } catch (e) {
-    $('result').textContent = e.message === 'No spins left' ? 'Your last answer is still saving. Try the wheel again in a moment.' : 'The wheel could not reach the server. Check your connection and try again.';
+    $('result').textContent = e.message === 'No spins left' ? 'Your last answer did not save yet. Try the wheel again in a moment.' : 'The wheel could not reach the server. Check your connection and try again.';
   }
   spinning = false; waiting = false; renderTray(); if (qi >= N) renderCard();
 }
@@ -467,13 +460,13 @@ card.addEventListener('submit', async e => {
   e.preventDefault();
   const v = $('loginEmail').value.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return renderWelcome('That email does not look right. Check it and try again.');
-  email = v; started = true; coins = 0; got = new Set(); qi = 0; draft = null;
+  email = v; started = true; coins = 0; used = 0; drawn = []; got = new Set(); qi = 0; draft = null;
   try { localStorage.setItem('email', v); } catch (e) {}
   // Show the first question straight away; the server catches up in the background.
   renderTray(); renderCard(); toCard();
   queue(() => api({ action: 'start' })).then(r => {
     if ((r.step || 0) > 0 || r.used > 0) {   // r.used = results drawn by the server   // returning respondent: restore their progress
-      coins = r.coins; used = r.shown || 0; ready = (r.pending || []).map(x => ({ slice: x, won: x === 0, coins: r.coins })); won = !!r.won && !(r.pending || []).includes(0); bonus = !!r.bonus; talksChosen = r.talks || []; got = new Set(r.earned || []);
+      coins = r.coins; used = r.shown || 0; drawn = r.results || []; won = !!r.won && !drawn.slice(used).includes(0); bonus = !!r.bonus; talksChosen = r.talks || []; got = new Set(r.earned || []);
       qi = Math.min(r.step || 0, N); draft = null; while (QUESTIONS[qi] && QUESTIONS[qi].type === 'rate' && !talksChosen.length) qi++;
       $('result').textContent = 'Welcome back. Picking up where you left off.';
       renderTray(); renderCard(); if (qi >= N) giveBonus();
@@ -507,13 +500,12 @@ function renderDone() {
     ${won ? `<p><b>You won ${esc(CONFIG.prize)}. We will email ${esc(email)}.</b></p>` : ''}</div>`;
 }
 const toCard = () => { if (innerWidth < 860) card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); };
-const sync = r => { coins = Math.max(coins, r.coins); renderTray(); };
+const sync = r => { absorb(r); renderTray(); };
 const saveFail = () => { $('result').textContent = 'That answer did not save. Check your connection, then keep going.'; };
 async function giveBonus() {
   if (bonus) return; bonus = true; await sleep(reduce ? 0 : 500);
   coins++; flyCoin($('card'), coins - 1);
   queue(() => api({ action: 'bonus' })).then(sync).catch(saveFail);
-  topUp();
 }
 function goBack() {
   const q = QUESTIONS[qi];
@@ -533,7 +525,6 @@ async function submit(from, skip) {
   let next = qi + 1; while (QUESTIONS[next] && QUESTIONS[next].type === 'rate' && !talksChosen.length) next++;
   if (fresh) { got.add(q.key); coins++; flyCoin(from, coins - 1); }
   if (has(value) || skip) queue(() => api({ action: 'answer', q: q.key, value, step: next })).then(sync).catch(saveFail);
-  if (fresh) topUp();
   await sleep(fresh && !reduce ? 650 : 0);
   qi = next; draft = null; otherText = ''; busy = false; renderTray(); renderCard(); toCard();
   if (qi >= N) giveBonus();
