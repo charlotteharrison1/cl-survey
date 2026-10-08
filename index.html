@@ -273,7 +273,7 @@ const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 let email = '';
 let saved = ''; try { saved = localStorage.getItem('email') || ''; } catch (e) {}
 
-let qi = 0, draft = null, coins = 0, used = 0, busy = false, spinning = false, waiting = false, drawn = [], pendingCalls = 0, won = false, started = false, rot = 0, lastMsg = -1;
+let qi = 0, draft = null, coins = 0, used = 0, busy = false, spinning = false, waiting = false, drawn = [], pendingCalls = 0, won = false, started = false, rot = 0;
 
 $('evt').textContent = CONFIG.eventName;
 $('winPrize').textContent = CONFIG.prize;
@@ -413,7 +413,6 @@ function flyCoin(from, idx) {
   ], { duration: 700, easing: 'cubic-bezier(.3,.7,.4,1)' });
   anim.onfinish = () => { el.remove(); slot.classList.remove('pending'); };
 }
-const MISS = ['Not this one. The next spin is a fresh 1 in 50.', 'Almost felt like it. Try again.', 'Pink this time, gold next time.', 'The wheel says no. The wheel is fickle.', 'No prize yet, but that was a great spin.'];
 // All of this person's spin results are drawn by the server once, at sign-in, and sent to the page.
 // Spinning only reveals the next one, so it never waits on a request. The server only counts a win
 // when the gold result sits within the coins the person has actually earned.
@@ -439,10 +438,7 @@ async function spin() {
     used++;
     api({ action: 'seen' }, 1).catch(() => {});   // reports how many results were watched; nothing waits on it
     if (res.won) { won = true; $('result').textContent = 'Gold! You won ' + CONFIG.prize + '.'; confetti(); showWin(); }
-    else {
-      let m; do { m = Math.floor(Math.random() * MISS.length); } while (m === lastMsg); lastMsg = m;
-      $('result').textContent = (res.slice === 1 || res.slice === SLICES - 1) ? 'So close! One slice away from gold.' : MISS[m];
-    }
+    else $('result').textContent = (res.slice === 1 || res.slice === SLICES - 1) ? 'So close! One slice away from gold.' : 'No prize this time!';
   } catch (e) {
     $('result').textContent = 'The wheel could not reach the server. Check your connection and try again.';
   }
