@@ -363,21 +363,21 @@ async function runSpin(getResult) {
       const dt = t - last; last = t;
       rot += dt * Math.min(.004, (t - t0) * .00004); tick(); draw();
       if (!res && !err && t - t0 > 15000) err = new Error('timeout');
-      if ((res || err) && t - t0 > 100) return done();
+      if ((res || err) && t - t0 > 0) return done();
       requestAnimationFrame(f);
     })(t0);
   });
   if (err) throw err;
   if (typeof res.slice !== 'number') throw new Error('bad reply');
-  const dur = reduce ? 1000 : 1600;
+  const dur = reduce ? 1000 : 2500;
   const jit = (Math.random() - .5) * .7;
   const want = -((res.slice + .5 + jit) * A);
   const delta = (((want - rot) % TAU) + TAU) % TAU;
-  const total = 0.5 + delta, start = rot, t1 = performance.now();
+  const total = TAU * 2 + delta, start = rot, t1 = performance.now();
   await new Promise(done => {
     (function f(t) {
       const p = Math.min(1, (t - t1) / dur);
-      rot = start + total * (1 - Math.pow(1 - p, 2)); tick(); draw();
+      rot = start + total * (1 - Math.pow(1 - p, 3)); tick(); draw();
       p < 1 ? requestAnimationFrame(f) : done();
     })(t1);
   });
