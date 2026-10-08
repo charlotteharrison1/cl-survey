@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Spin the Survey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: wheel stage on the left, one question card on the right; stacks on phones with a fixed spin bar. */
+:root {
+  --bg: #fceff4; --bg2: #fcd9e4; --card: #ffffff; --ink: #4a1020; --muted: #8e5a68;
+  --red: #e11d48; --red-ink: #ffffff; --accent-text: #c4123b; --pink: #ff8fab; --blush: #ffe3ea;
+  --line: #f6c5d1; --gold: #ffc53d; --gold-ink: #5a3a00; --shadow: rgba(225, 29, 72, .18);
+  --w-red: #e11d48; --w-pink: #ff9db6; --w-white: #fff7f9; --w-gold: #ffc53d; --w-rim: #7a1630;
+  --display: 'Anton', 'Impact', 'Arial Narrow', sans-serif;
+  --body: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg); color: var(--ink); font: 17px/1.5 var(--body);
+  min-height: 100vh;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
+
+.wrap { max-width: 1060px; margin: 0 auto; padding: 28px 18px 110px; }
+.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 26px; }
+.top > div { min-width: 0; max-width: 640px; }
+.logo { width: clamp(96px, 22vw, 200px); flex: none; }
+.kicker { margin: 0 0 6px; font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-text); }
+h1 { margin: 0; font: 400 clamp(38px, 6.5vw, 64px)/1.02 var(--display); text-transform: uppercase; letter-spacing: .01em; color: var(--accent-text); text-wrap: balance; }
+.lede { margin: 12px 0 0; color: var(--muted); max-width: 52ch; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (min-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; } .stage { position: sticky; top: 24px; } }
+
+/* wheel */
+.stage { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
+.wheel { position: relative; width: min(100%, 440px); aspect-ratio: 1; max-width: 100%; }
+@media (max-width: 859px) { .wheel { width: min(60vw, 230px); } }
+#cv { width: 100%; height: 100%; display: block; transition: filter .6s, opacity .6s; filter: drop-shadow(0 18px 24px var(--shadow)); }
+.locked #cv { filter: grayscale(.7) brightness(1.08) drop-shadow(0 18px 24px var(--shadow)); opacity: .8; }
+.pointer { position: absolute; left: 50%; top: -3%; width: 9%; transform: translateX(-50%); transform-origin: 50% 20%; filter: drop-shadow(0 3px 3px rgba(0,0,0,.25)); }
+.hub {
+  position: absolute; inset: 0; margin: auto; width: 24%; aspect-ratio: 1; border-radius: 50%;
+  border: 5px solid var(--red); background: var(--card); color: var(--accent-text);
+  font: 400 clamp(14px, 2.8vw, 22px) var(--display); letter-spacing: .06em; display: grid; place-items: center;
+  box-shadow: 0 6px 16px var(--shadow); transition: transform .15s;
+}
+.hub:active { transform: scale(.94); }
+.hub svg { width: 42%; height: 42%; }
+.hub.shake { animation: shake .45s; }
+@keyframes shake { 20%, 60% { transform: translateX(-5px) rotate(-6deg); } 40%, 80% { transform: translateX(5px) rotate(6deg); } }
+
+.tray { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; min-height: 44px; }
+.slot { width: 40px; height: 40px; border-radius: 50%; border: 2px dashed var(--pink); display: grid; place-items: center; transition: border-color .3s; }
+.coin {
+  width: 100%; height: 100%; border-radius: 50%; display: grid; place-items: center; color: var(--gold-ink);
+  background: radial-gradient(circle at 32% 28%, #fff1b8, var(--gold) 55%, #e8a000); border: 2px solid #f0a800;
+  box-shadow: inset 0 -3px 0 rgba(160, 90, 0, .25); animation: pop .45s cubic-bezier(.2, 1.6, .4, 1);
+}
+.coin svg { width: 55%; height: 55%; }
+.slot.has { border-style: solid; border-color: transparent; }
+.slot.spent .coin { opacity: .28; filter: grayscale(.6); animation: none; }
+.slot.pending .coin { visibility: hidden; }
+@keyframes pop { from { transform: scale(.3); } to { transform: scale(1); } }
+.fly { position: fixed; left: 0; top: 0; width: 40px; height: 40px; z-index: 30; pointer-events: none; }
+
+.spin {
+  border: 0; border-radius: 999px; padding: 15px 30px; font: 400 22px var(--display); letter-spacing: .05em; text-transform: uppercase;
+  background: var(--red); color: var(--red-ink); box-shadow: 0 8px 0 rgba(0,0,0,.18), 0 14px 24px var(--shadow);
+  transition: transform .12s, box-shadow .12s, background .3s; min-width: 250px; max-width: calc(100vw - 32px);
+}
+.spin:active:not(:disabled) { transform: translateY(5px); box-shadow: 0 3px 0 rgba(0,0,0,.18), 0 6px 12px var(--shadow); }
+.spin:disabled { background: var(--blush); color: var(--muted); box-shadow: 0 6px 0 var(--line); cursor: not-allowed; font-size: 17px; }
+@media (max-width: 859px) {
+  .spin { position: fixed; z-index: 10; left: 0; right: 0; margin: auto; width: max-content; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+}
+.odds { margin: 0; font-size: 14px; color: var(--muted); text-align: center; }
+.odds b { color: var(--accent-text); }
+.result { margin: 0; min-height: 3em; text-align: center; font-weight: 600; max-width: 34ch; }
+
+/* question card */
+.card {
+  background: var(--card); border-radius: 30px; padding: clamp(20px, 4vw, 34px); min-width: 0;
+  box-shadow: 0 2px 0 var(--line), 0 24px 50px -20px var(--shadow); border: 1.5px solid var(--line);
+}
+.step { animation: slide .45s cubic-bezier(.2, .9, .3, 1); display: flex; flex-direction: column; gap: 18px; }
+@keyframes slide { from { opacity: 0; transform: translateX(24px); } }
+.dots { display: flex; gap: 6px; align-items: center; }
+.dot { height: 8px; width: 8px; border-radius: 8px; background: var(--line); transition: all .3s; }
+.dot.done { background: var(--red); }
+.dot.now { width: 26px; background: var(--pink); }
+.count { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+h2 { margin: 0; font: 400 clamp(28px, 4vw, 38px)/1.1 var(--display); text-transform: uppercase; letter-spacing: .01em; text-wrap: balance; }
+.hint { margin: -10px 0 0; color: var(--muted); font-size: 15px; }
+.opts { display: flex; flex-wrap: wrap; gap: 10px; }
+.opt {
+  border: 2px solid var(--line); background: var(--card); border-radius: 999px; padding: 11px 18px; font-weight: 600;
+  transition: transform .12s, background .2s, border-color .2s, color .2s;
+}
+.opt:hover { border-color: var(--pink); transform: translateY(-2px); }
+.opt:active { transform: scale(.95); }
+.opt[aria-pressed="true"] { background: var(--red); border-color: var(--red); color: var(--red-ink); animation: pop .3s cubic-bezier(.2, 1.6, .4, 1); }
+.hearts { display: flex; gap: 6px; }
+.heart { border: 0; background: none; padding: 2px; width: clamp(44px, 12vw, 58px); transition: transform .15s; }
+.heart svg { width: 100%; fill: var(--blush); stroke: var(--pink); stroke-width: 1.5; transition: fill .2s, stroke .2s; }
+.heart.on svg { fill: var(--red); stroke: var(--red); }
+.heart:hover { transform: scale(1.12) rotate(-4deg); }
+textarea {
+  width: 100%; min-height: 120px; resize: vertical; border: 2px solid var(--line); border-radius: 20px; padding: 14px 16px;
+  background: var(--card); color: var(--ink); font: inherit;
+}
+textarea:focus, input[type=email]:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 4px var(--blush); }
+.row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.next {
+  border: 0; border-radius: 999px; padding: 13px 28px; font-weight: 700; background: var(--red); color: var(--red-ink);
+  box-shadow: 0 5px 0 rgba(0,0,0,.18); transition: transform .12s, box-shadow .12s, opacity .2s;
+}
+.next:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.18); }
+.next:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
+.skip { border: 0; background: none; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; padding: 8px; }
+.earn { font-size: 14px; color: var(--muted); }
+.done p { margin: 0; color: var(--muted); }
+.foot { text-align: center; font-size: 13px; color: var(--muted); margin: 34px 0 0; }
+
+/* win overlay */
+.overlay { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 18px; background: rgba(60, 5, 20, .6); backdrop-filter: blur(4px); }
+.overlay .card { max-width: 440px; width: 100%; text-align: center; display: flex; flex-direction: column; gap: 14px; animation: pop .5s cubic-bezier(.2, 1.4, .4, 1); }
+.overlay h2 { font-size: clamp(34px, 8vw, 46px); color: var(--accent-text); }
+.overlay p { margin: 0; color: var(--muted); }
+input[type=email] { width: 100%; border: 2px solid var(--line); border-radius: 999px; padding: 13px 20px; background: var(--card); color: var(--ink); font: inherit; text-align: center; }
+#confetti { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 50; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } html { scroll-behavior: auto; } }
+.opts.list { flex-direction: column; gap: 8px; }
+.opts.list .opt { border-radius: 16px; text-align: left; width: 100%; padding: 12px 16px; line-height: 1.35; display: flex; align-items: flex-start; gap: 12px; }
+.opts.list .opt::before { content: ""; display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; flex: none; margin-top: 2px; opacity: .45; }
+.opts.list.multi .opt::before { border-radius: 5px; }
+.opts.list .opt[aria-pressed="true"]::before { background: var(--red-ink); border-color: var(--red-ink); opacity: 1; }
+.talk { border: 1.5px solid var(--line); border-radius: 20px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.talk h3 { margin: 0; font: 700 16px/1.3 var(--body); }
+.rrow { display: flex; flex-direction: column; gap: 4px; }
+.rrow span { font-size: 15px; }
+.hearts.sm { gap: 2px; }
+.hearts.sm .heart { width: 40px; }
+input[type=text] { width: 100%; border: 2px solid var(--line); border-radius: 16px; padding: 12px 16px; background: var(--card); color: var(--ink); font: inherit; }
+input[type=text]:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 4px var(--blush); }
+@media (max-width: 859px) {
+  .stage { gap: 10px; }
+  .tray { gap: 5px; min-height: 30px; flex-wrap: nowrap; }
+  .slot { width: 30px; height: 30px; }
+  .result { min-height: 0; }
+  .top { margin-bottom: 14px; }
+  h1 { font-size: 34px; }
+  .spin { min-width: 0; padding: 11px 24px; font-size: 18px; }
+  .spin:disabled { font-size: 15px; }
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="top">
+    <div>
+      <h1>How was <span id="evt"></span>?</h1>
+      <p class="lede">Your answers help make the Fringe better. Answer our questions for a chance to win a prize!</p>
+    </div>
+    <img class="logo" src="logo.png" alt="The Campaign Fringe by Campaign Lab">
+  </header>
+  <div class="grid">
+    <section class="stage locked" id="stage" aria-label="Prize wheel">
+      <div class="wheel">
+        <canvas id="cv" aria-hidden="true"></canvas>
+        <svg class="pointer" id="pointer" viewBox="0 0 40 52" aria-hidden="true"><path d="M20 50 4 18C-2 6 8 0 20 0s22 6 16 18z" fill="var(--red)" stroke="var(--card)" stroke-width="3"/><circle cx="20" cy="15" r="5" fill="var(--card)"/></svg>
+        <button class="hub" id="hub" type="button" aria-label="Spin the wheel"></button>
+      </div>
+      <div class="tray" id="tray"></div>
+      <button class="spin" id="spinBtn" type="button"></button>
+      <p class="odds">Land on the gold slice to win <b id="prize"></b>. The odds are 1 in 240 per spin.</p>
+      <p class="result" id="result" role="status" aria-live="polite"></p>
+    </section>
+    <section class="card" id="card" aria-live="polite"></section>
+  </div>
+  <p class="foot" id="foot"></p>
+</main>
+
+<div class="overlay" id="win" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+    <h2 id="winTitle">You won!</h2>
+    <p>The gold slice is yours: <b id="winPrize"></b>. We will email <b id="winEmail"></b> to get it to you.</p>
+    <button class="next" type="button" id="later">Keep going</button>
+  </div>
+</div>
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<script>
+// ---- Edit these ----
+const CONFIG = {
+  endpoint: 'https://script.google.com/macros/s/AKfycbwDvPU7n4eQRbz6KC6J2fJIMDtrndFZf7yUcj0EdKmASGOiO_rW51ysah_CYdBHL0qI/exec',            // paste your Apps Script web app URL here (see apps-script/Code.gs)
+  eventName: 'The Campaign Fringe',  // shown in the heading
+  prize: 'a prize',        // shown under the wheel and on the win screen
+};
+// Talk titles must match TALKS in apps-script/Code.gs exactly.
+const TALKS = [
+  'Fighting the Right: What Works?',
+  'Training and discussion: Sisters Resist! Feminists Taking On the Trolls',
+  'Progressive Pushback: Campaigning Under a Labour Government',
+  'Training and discussion: Building Shared Ground with British South Asians: Challenges and Opportunities',
+  'Beyond the Algorithm: Building Authentic Voices in the New Media Landscape',
+  "Training session: Beyond the Feed: Reaching Voters Where Meta and Google Can't",
+  'The AI Campaign Toolkit: Balancing Efficiency with Trust',
+  'The Polling Problem: Tactics for a Fragmented Map',
+  'Training session: Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit',
+  'Unions: New Tactics, Campaigns and Ideas',
+  'What Moves People: Lessons from the US Campaign Trail',
+  'The Campaign Fringe Awards and Drinks Reception',
+];
+// Sign-in earns the first coin, each question below earns one, and the thank-you earns a bonus spin.
+const QUESTIONS = [
+  { key: 'how', type: 'single', list: true, other: 'Other (please specify)', title: 'How did you hear about the Fringe?', options: ['Campaign Lab social media', 'Campaign Lab newsletter', 'Word of mouth', 'Labour conference app', 'Leaflet distributed at Labour conference', 'Social media post from someone other than Campaign Lab', 'Came to support a specific talk or training', 'Other (please specify)'] },
+  { key: 'experience', type: 'single', list: true, title: 'Which of these best describes your experience of the Fringe?', options: ['I came for a specific event and stayed for more', 'I came for a specific event and only stayed for that event', 'I came for the Fringe as a whole', "I came to see the stalls and didn't attend a talk or training"] },
+  { key: 'talks', type: 'multi', list: true, title: 'Which talks or trainings did you attend?', options: TALKS },
+  { key: 'rate', type: 'rate', title: '' },
+  { key: 'future', type: 'multi', title: 'Would you attend any of these Campaign Lab events in the future?', options: ['Hack night', 'A future Campaign Fringe'] },
+  { key: 'comments', type: 'text', title: 'Do you have any further comments or feedback?' },
+];
+// ---- End edit ----
+
+const ODDS = 240, SLICES = 50, N = QUESTIONS.length, TOTAL = N + 2, TAU = Math.PI * 2, A = TAU / SLICES;
+const $ = id => document.getElementById(id);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const COIN = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z"/></svg>';
+const HEART = '<svg viewBox="0 0 24 24"><path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z"/></svg>';
+const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="3" fill="currentColor"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+
+let email = '';
+let saved = ''; try { saved = localStorage.getItem('email') || ''; } catch (e) {}
+
+let qi = 0, draft = null, coins = 0, used = 0, busy = false, spinning = false, won = false, started = false, rot = 0, lastMsg = -1;
+
+$('evt').textContent = CONFIG.eventName;
+$('prize').textContent = CONFIG.prize;
+$('winPrize').textContent = CONFIG.prize;
+$('foot').textContent = CONFIG.endpoint ? 'Your answers are saved as you go.' : 'Demo mode: nothing is being saved yet. Add your endpoint in index.html.';
+
+// ---- backend (Google Apps Script, or a local stand-in when no endpoint is set) ----
+let chain = Promise.resolve();
+const queue = fn => { const p = chain.then(fn); chain = p.catch(() => {}); return p; };
+const demo = { earned: {}, used: 0, step: 0 };
+const dCoins = () => Object.keys(demo.earned).length;
+const has = v => typeof v === 'string' ? v.trim() !== '' : Array.isArray(v) ? v.length > 0 : !!v && (Object.keys(v.ratings || {}).length > 0 || String(v.feedback || '').trim() !== '');
+async function demoApi(b) {
+  await sleep(250);
+  const st = () => ({ coins: dCoins(), used: demo.used, step: demo.step, won: false, bonus: !!demo.earned.bonus, talks: [] });
+  if (b.action === 'start') { demo.earned.email = 1; return st(); }
+  if (b.action === 'answer') { demo.step = Math.max(demo.step, b.step); if (has(b.value)) demo.earned[b.q] = 1; return st(); }
+  if (b.action === 'bonus') { demo.earned.bonus = 1; return st(); }
+  if (b.action === 'spin') { if (demo.used >= dCoins()) throw new Error('No spins left'); demo.used++; const s = Math.floor(Math.random() * ODDS) === 0 ? 0 : 1 + Math.floor(Math.random() * (SLICES - 1)); return Object.assign(st(), { slice: s, won: s === 0 }); }
+  return st();
+}
+async function api(body, tries = 3) {
+  body.email = email;
+  if (!CONFIG.endpoint) return demoApi(body);
+  for (let t = 1; ; t++) {
+    try {
+      const r = await fetch(CONFIG.endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (j.error) throw Object.assign(new Error(j.error), { fatal: true });
+      return j;
+    } catch (e) { if (e.fatal || t >= tries) throw e; await sleep(700 * t); }
+  }
+}
+
+// ---- wheel ----
+const cv = $('cv'), ctx = cv.getContext('2d');
+let pal = {}, size = 0;
+function readPal() {
+  const s = getComputedStyle(document.documentElement), g = n => s.getPropertyValue(n).trim();
+  pal = { red: g('--w-red'), pink: g('--w-pink'), white: g('--w-white'), gold: g('--w-gold'), rim: g('--w-rim') };
+}
+function star(cx, cy, r, color) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) { const rr = i % 2 ? r * .45 : r, a = -Math.PI / 2 + i * Math.PI / 5; ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); }
+  ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+}
+function draw() {
+  if (!size) return;
+  const c = size / 2, R = c - 4, r = R * .9;
+  ctx.clearRect(0, 0, size, size);
+  ctx.save(); ctx.translate(c, c); ctx.rotate(rot);
+  for (let i = 0; i < SLICES; i++) {
+    const a0 = -Math.PI / 2 + i * A, a1 = a0 + A + .004;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, r, a0, a1); ctx.closePath();
+    ctx.fillStyle = i === 0 ? pal.gold : [pal.pink, pal.red, pal.white][i % 3];
+    ctx.fill();
+  }
+  ctx.rotate(-Math.PI / 2 + A / 2); star(r * .8, 0, r * .07, pal.rim); ctx.restore();
+  // static rim with bulbs
+  ctx.beginPath(); ctx.arc(c, c, R, 0, TAU); ctx.arc(c, c, r, 0, TAU, true); ctx.fillStyle = pal.rim; ctx.fill();
+  for (let i = 0; i < SLICES; i++) {
+    const a = i * A;
+    ctx.beginPath(); ctx.arc(c + Math.cos(a) * (R + r) / 2, c + Math.sin(a) * (R + r) / 2, (R - r) * .17, 0, TAU);
+    ctx.fillStyle = i % 2 ? pal.white : pal.pink; ctx.fill();
+  }
+}
+function resize() {
+  const d = Math.min(devicePixelRatio || 1, 2), w = cv.clientWidth;
+  if (!w) return;
+  size = Math.round(w * d); cv.width = cv.height = size; draw();
+}
+new ResizeObserver(resize).observe(cv);
+readPal();
+new MutationObserver(() => { readPal(); draw(); }).observe(document.documentElement, { attributes: true });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readPal(); draw(); });
+document.fonts && document.fonts.ready.then(() => $('hub').offsetWidth);
+
+const under = () => Math.floor((((-rot) % TAU) + TAU) % TAU / A) % SLICES;
+let lastUnder = 0;
+function tick() {
+  const u = under();
+  if (u !== lastUnder) { lastUnder = u; if (!reduce) $('pointer').animate([{ transform: 'translateX(-50%) rotate(-16deg)' }, { transform: 'translateX(-50%) rotate(0)' }], { duration: 110 }); }
+}
+async function runSpin(getResult) {
+  let res, err; getResult().then(r => res = r, e => err = e);
+  const t0 = performance.now(); let last = t0;
+  await new Promise(done => {
+    (function f(t) {
+      const dt = t - last; last = t;
+      rot += dt * Math.min(.008, (t - t0) * .00002); tick(); draw();
+      if ((res || err) && t - t0 > 400) return done();
+      requestAnimationFrame(f);
+    })(t0);
+  });
+  if (err) throw err;
+  const dur = reduce ? 1200 : 3500;
+  const jit = (Math.random() - .5) * .7;
+  const want = -((res.slice + .5 + jit) * A);
+  const delta = (((want - rot) % TAU) + TAU) % TAU;
+  const total = TAU + delta, start = rot, t1 = performance.now();
+  await new Promise(done => {
+    (function f(t) {
+      const p = Math.min(1, (t - t1) / dur);
+      rot = start + total * (1 - Math.pow(1 - p, 3.2)); tick(); draw();
+      p < 1 ? requestAnimationFrame(f) : done();
+    })(t1);
+  });
+  return res;
+}
+
+// ---- coins + spin ----
+function renderTray(pending = -1) {
+  $('tray').innerHTML = Array.from({ length: TOTAL }, (_, i) =>
+    `<div class="slot ${i < coins ? 'has' : ''} ${i < used ? 'spent' : ''} ${i === pending ? 'pending' : ''}">${i < coins ? `<div class="coin">${COIN}</div>` : ''}</div>`).join('');
+  const left = coins - used, b = $('spinBtn'), hub = $('hub');
+  $('stage').classList.toggle('locked', left <= 0 && !spinning);
+  b.disabled = left <= 0 || spinning;
+  b.classList.toggle('ready', left > 0 && !spinning);
+  b.textContent = spinning ? 'Spinning…' : left > 0 ? `Spin the wheel (${left})` : coins === 0 ? 'Enter your email to unlock' : qi >= N ? 'No spins left' : 'Answer to earn a spin';
+  hub.innerHTML = left > 0 || spinning ? 'SPIN' : LOCK;
+}
+function flyCoin(from, idx) {
+  renderTray(idx);
+  const slot = $('tray').children[idx];
+  if (reduce || !from || !slot) { renderTray(); return; }
+  const a = from.getBoundingClientRect(), b = slot.getBoundingClientRect();
+  const x0 = a.left + a.width / 2 - 20, y0 = a.top + a.height / 2 - 20, x1 = b.left + b.width / 2 - 20, y1 = b.top + b.height / 2 - 20;
+  const el = document.createElement('div'); el.className = 'fly'; el.innerHTML = `<div class="coin">${COIN}</div>`;
+  document.body.append(el);
+  const anim = el.animate([
+    { transform: `translate(${x0}px,${y0}px) scale(.6)` },
+    { transform: `translate(${(x0 + x1) / 2}px,${Math.min(y0, y1) - 70}px) scale(1.3)`, offset: .45 },
+    { transform: `translate(${x1}px,${y1}px) scale(1)` },
+  ], { duration: 700, easing: 'cubic-bezier(.3,.7,.4,1)' });
+  anim.onfinish = () => { el.remove(); slot.classList.remove('pending'); };
+}
+const MISS = ['Not this one. The next spin is a fresh 1 in 50.', 'Almost felt like it. Try again.', 'Pink this time, gold next time.', 'The wheel says no. The wheel is fickle.', 'No prize yet, but that was a great spin.'];
+async function spin() {
+  if (spinning) return;
+  if (coins - used <= 0) {
+    const h = $('hub'); h.classList.remove('shake'); void h.offsetWidth; h.classList.add('shake');
+    $('result').textContent = 'Answer a question to earn a coin, then the wheel unlocks.'; return;
+  }
+  spinning = true; $('result').textContent = ''; renderTray();
+  $('stage').scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+  try {
+    const res = await runSpin(() => chain.then(() => api({ action: 'spin' }, 1)));
+    used = res.used; coins = Math.max(coins, res.coins);
+    if (res.won) { won = true; $('result').textContent = 'Gold! You won ' + CONFIG.prize + '.'; confetti(); showWin(); }
+    else {
+      let m; do { m = Math.floor(Math.random() * MISS.length); } while (m === lastMsg); lastMsg = m;
+      $('result').textContent = (res.slice === 1 || res.slice === SLICES - 1) ? 'So close! One slice away from gold.' : MISS[m];
+    }
+  } catch (e) {
+    $('result').textContent = 'The wheel could not reach the server. Check your connection and try again.';
+  }
+  spinning = false; renderTray(); if (qi >= N) renderCard();
+}
+$('spinBtn').onclick = $('hub').onclick = spin;
+
+// ---- win + confetti ----
+function showWin() { $('winEmail').textContent = email; $('win').hidden = false; setTimeout(() => $('later').focus(), 300); }
+$('later').onclick = () => { $('win').hidden = true; if (qi >= N) renderCard(); };
+function confetti() {
+  if (reduce) return;
+  const c = $('confetti'), x = c.getContext('2d'); c.width = innerWidth; c.height = innerHeight;
+  const cols = [pal.red, pal.pink, pal.white, pal.gold];
+  const ps = Array.from({ length: 140 }, () => ({ x: innerWidth / 2, y: innerHeight * .4, vx: (Math.random() - .5) * 16, vy: -Math.random() * 15 - 3, s: 5 + Math.random() * 7, r: Math.random() * 6, vr: (Math.random() - .5) * .4, c: cols[Math.floor(Math.random() * 4)] }));
+  const t0 = performance.now();
+  (function f(t) {
+    x.clearRect(0, 0, c.width, c.height);
+    for (const p of ps) { p.vy += .35; p.x += p.vx; p.y += p.vy; p.r += p.vr; x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.fillStyle = p.c; x.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); x.restore(); }
+    t - t0 < 3200 ? requestAnimationFrame(f) : x.clearRect(0, 0, c.width, c.height);
+  })(t0);
+}
+
+// ---- questions ----
+const card = $('card');
+let talksChosen = [], bonus = false, otherText = '';
+const dots = () => `<div class="dots" aria-hidden="true">${QUESTIONS.map((_, i) => `<span class="dot ${i < qi ? 'done' : i === qi ? 'now' : ''}"></span>`).join('')}<span class="count">${Math.min(qi + 1, N)} of ${N}</span></div>`;
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const newDraft = q => q.type === 'multi' ? [] : q.type === 'rate' ? { r: {}, fb: '' } : '';
+function valueOf(q) {
+  if (q.type === 'single') return q.other && draft === q.other ? (otherText.trim() ? 'Other: ' + otherText.trim() : 'Other') : draft;
+  if (q.type !== 'rate') return draft;
+  const ratings = {};
+  for (const [i, x] of Object.entries(draft.r)) if (x.e || x.i) ratings[talksChosen[i]] = x;
+  return { ratings, feedback: draft.fb };
+}
+const heartRow = (i, kind, label, val) => `<div class="rrow"><span>${label}</span><div class="hearts sm" role="group" aria-label="${label.replace(/<[^>]*>/g, '')}">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="heart ${n <= val ? 'on' : ''}" data-talk="${i}" data-kind="${kind}" data-rate="${n}" aria-label="${n} of 5">${HEART}</button>`).join('')}</div></div>`;
+
+function renderWelcome(msg = '') {
+  card.innerHTML = `<form class="step" id="login" novalidate><h2>Enter your email</h2>
+    <input type="email" id="loginEmail" required autocomplete="email" placeholder="you@example.com" aria-label="Your email" value="${esc(saved)}">
+    <p class="hint" id="loginErr" role="alert" style="color:var(--accent-text)">${esc(msg)}</p>
+    <div class="row"><button class="next" type="submit" id="go">Next</button></div></form>`;
+}
+card.addEventListener('submit', async e => {
+  if (e.target.id !== 'login') return;
+  e.preventDefault();
+  const v = $('loginEmail').value.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return renderWelcome('That email does not look right. Check it and try again.');
+  const b = $('go'); b.disabled = true; b.textContent = 'One sec…';
+  email = v;
+  try {
+    const r = await api({ action: 'start' });
+    coins = r.coins; used = r.used; won = !!r.won; started = true; bonus = !!r.bonus; talksChosen = r.talks || [];
+    qi = Math.min(r.step || 0, N); while (QUESTIONS[qi] && QUESTIONS[qi].type === 'rate' && !talksChosen.length) qi++;
+    try { localStorage.setItem('email', v); } catch (e) {}
+    $('result').textContent = r.step > 0 ? 'Welcome back. Picking up where you left off.' : '';
+    renderTray(); renderCard(); toCard();
+    if (!r.step && !used && coins === 1) flyCoin($('card'), 0);
+    if (qi >= N) giveBonus();
+  } catch (err) { email = ''; renderWelcome(err.fatal ? 'The server replied: ' + err.message : 'Could not connect. Check your connection and try again.'); }
+});
+function renderCard() {
+  if (!started) return renderWelcome();
+  if (qi >= N) return renderDone();
+  const q = QUESTIONS[qi]; if (draft === null) draft = newDraft(q);
+  let body = '';
+  if (q.type === 'single' || q.type === 'multi')
+    body = `<div class="opts ${q.list ? 'list' : ''} ${q.type}">${q.options.map(o => `<button type="button" class="opt" data-opt="${esc(o)}" aria-pressed="${q.type === 'multi' ? draft.includes(o) : draft === o}">${esc(o)}</button>`).join('')}</div>`
+      + (q.other && draft === q.other ? `<input type="text" id="other" maxlength="200" placeholder="Please specify" aria-label="Please specify" value="${esc(otherText)}">` : '');
+  else if (q.type === 'rate')
+    body = talksChosen.map((t, i) => `<div class="talk">${heartRow(i, 'e', `How much did you enjoy <b>${esc(t)}</b>?`, (draft.r[i] || {}).e || 0)}${heartRow(i, 'i', `How informative was <b>${esc(t)}</b>?`, (draft.r[i] || {}).i || 0)}</div>`).join('')
+      + `<p class="hint" style="margin:0">Do you have any specific feedback for these events?</p><textarea id="ans" maxlength="1000" aria-label="Do you have any specific feedback for these events?">${esc(draft.fb)}</textarea>`;
+  else body = `<textarea id="ans" maxlength="1000" aria-label="${esc(q.title)}">${esc(draft)}</textarea>`;
+  const needsNext = q.type !== 'single' || (q.other && draft === q.other);
+  card.innerHTML = `<div class="step">${dots()}${q.title ? `<h2>${esc(q.title)}</h2>` : ''}${q.hint ? `<p class="hint">${esc(q.hint)}</p>` : ''}${body}
+    <div class="row">${needsNext ? `<button class="next" type="button" id="next" ${has(valueOf(q)) ? '' : 'disabled'}>${qi === N - 1 ? 'Finish' : 'Next'}</button>` : ''}
+    <button class="skip" type="button" id="skip">Skip, no coin</button><span class="earn">+1 coin</span></div></div>`;
+}
+function renderDone() {
+  card.innerHTML = `<div class="step done">${dots().replace(/<span class="count">.*<\/span>/, '')}<h2>Thank you for your feedback!</h2>
+    <p>Here's an extra spin.</p>
+    ${won ? `<p><b>You won ${esc(CONFIG.prize)}. We will email ${esc(email)}.</b></p>` : ''}</div>`;
+}
+const toCard = () => { if (innerWidth < 860) card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); };
+const sync = r => { coins = Math.max(coins, r.coins); renderTray(); };
+const saveFail = () => { $('result').textContent = 'That answer did not save. Check your connection, then keep going.'; };
+async function giveBonus() {
+  if (bonus) return; bonus = true; await sleep(reduce ? 0 : 500);
+  coins++; flyCoin($('card'), coins - 1);
+  queue(() => api({ action: 'bonus' })).then(sync).catch(saveFail);
+}
+async function submit(from, skip) {
+  if (busy) return; busy = true;
+  const q = QUESTIONS[qi], value = skip ? '' : valueOf(q), earn = has(value);
+  if (q.key === 'talks') talksChosen = Array.isArray(value) ? value : [];
+  let next = qi + 1; while (QUESTIONS[next] && QUESTIONS[next].type === 'rate' && !talksChosen.length) next++;
+  if (earn) { coins++; flyCoin(from, coins - 1); }
+  queue(() => api({ action: 'answer', q: q.key, value, step: next })).then(sync).catch(saveFail);
+  await sleep(earn && !reduce ? 650 : 0);
+  qi = next; draft = null; otherText = ''; busy = false; renderTray(); renderCard(); toCard();
+  if (qi >= N) giveBonus();
+}
+card.addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t || busy || !started || qi >= N) return;
+  const q = QUESTIONS[qi];
+  if (t.dataset.opt !== undefined) {
+    if (q.type === 'single') {
+      if (q.other && t.dataset.opt === q.other) { draft = q.other; renderCard(); const o = $('other'); if (o) o.focus(); return; }
+      draft = t.dataset.opt; t.setAttribute('aria-pressed', 'true'); submit(t);
+    } else { const i = draft.indexOf(t.dataset.opt); i < 0 ? draft.push(t.dataset.opt) : draft.splice(i, 1); t.setAttribute('aria-pressed', i < 0); $('next').disabled = !has(valueOf(q)); }
+  } else if (t.dataset.rate) {
+    const n = +t.dataset.rate; (draft.r[t.dataset.talk] ||= {})[t.dataset.kind] = n;
+    t.parentNode.querySelectorAll('.heart').forEach((h, i) => h.classList.toggle('on', i < n)); $('next').disabled = false;
+  } else if (t.id === 'next') submit(t);
+  else if (t.id === 'skip') submit(null, true);
+});
+card.addEventListener('input', e => {
+  const q = QUESTIONS[qi]; if (!q) return;
+  if (e.target.id === 'ans') { q.type === 'rate' ? draft.fb = e.target.value : draft = e.target.value; $('next').disabled = !has(valueOf(q)); }
+  else if (e.target.id === 'other') otherText = e.target.value;
+});
+
+renderTray(); renderCard();
+</script>
+</body>
+</html>
