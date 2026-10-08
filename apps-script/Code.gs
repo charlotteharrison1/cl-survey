@@ -29,7 +29,7 @@ const TALKS = [           // must match TALKS in index.html exactly
 ];
 const TEXT = { how: 'How heard', experience: 'Experience', talks: 'Talks attended', future: 'Future events', comments: 'Comments' };
 const short = t => String(t || '').slice(0, 50);
-const HEAD = ['Started', 'Email', 'Step', 'Earned', 'Coins', 'Spins used', 'Spin results', 'Prize won', 'How heard', 'Experience', 'Talks attended']
+const HEAD = ['Started', 'Email', 'Step', 'Earned', 'Coins', 'Spins used', 'Spins shown', 'Spin results', 'Prize won', 'How heard', 'Experience', 'Talks attended']
   .concat(TALKS.map(t => 'Enjoyed: ' + short(t)), TALKS.map(t => 'Informative: ' + short(t)), ['Session feedback', 'Future events', 'Comments']);
 const col = name => HEAD.indexOf(name) + 1;
 
@@ -93,6 +93,9 @@ function handle(r) {
     } else throw new Error('Unknown question');
     set('Step', Math.max(Number(get('Step')) || 0, Math.min(NQ, Number(r.step) || 0)));
     if (any) earn(r.q);
+  } else if (r.action === 'seen') {
+    // the page reports how many drawn results the person has actually watched
+    set('Spins shown', Math.max(Number(get('Spins shown')) || 0, Math.min(Number(get('Spins used')) || 0, Number(r.n) || 0)));
   } else if (r.action === 'bonus') {
     if ((Number(get('Step')) || 0) < NQ) throw new Error('Finish the questions first');
     earn('bonus');
@@ -104,7 +107,7 @@ function handle(r) {
     const gold = Math.floor(Math.random() * WIN_ODDS) === 0 && prizes < PRIZE_LIMIT;
     const slice = gold ? 0 : 1 + Math.floor(Math.random() * (SLICES - 1));
     set('Spins used', used + 1);
-    set('Spin results', [get('Spin results'), slice].filter(y => y !== '').join(','));
+    set('Spin results', [get('Spin results'), slice].filter(y => y !== '').join(' '));   // space-separated so Sheets keeps it as text
     if (slice === 0) set('Prize won', 'YES');
     save();
     return { slice: slice, won: slice === 0, coins: Number(get('Coins')), used: used + 1 };
@@ -115,5 +118,7 @@ function handle(r) {
     coins: Number(get('Coins')) || 0, used: Number(get('Spins used')) || 0, step: Number(get('Step')) || 0,
     won: get('Prize won') === 'YES', bonus: earned().indexOf('bonus') >= 0, earned: earned(),
     talks: String(get('Talks attended')).split(' | ').filter(Boolean),
+    shown: Number(get('Spins shown')) || 0,
+    pending: String(get('Spin results')).split(/[ ,]+/).filter(x => x !== '').map(Number).slice(Number(get('Spins shown')) || 0),
   };
 }
