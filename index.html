@@ -332,16 +332,16 @@ async function runSpin(getResult) {
     (function f(t) {
       const dt = t - last; last = t;
       rot += dt * Math.min(.008, (t - t0) * .00002); tick(); draw();
-      if ((res || err) && t - t0 > 400) return done();
+      if ((res || err) && t - t0 > 200) return done();
       requestAnimationFrame(f);
     })(t0);
   });
   if (err) throw err;
-  const dur = reduce ? 1200 : 2000;
+  const dur = reduce ? 1000 : 1300;
   const jit = (Math.random() - .5) * .7;
   const want = -((res.slice + .5 + jit) * A);
   const delta = (((want - rot) % TAU) + TAU) % TAU;
-  const total = TAU / 2 + delta, start = rot, t1 = performance.now();
+  const total = TAU / 4 + delta, start = rot, t1 = performance.now();
   await new Promise(done => {
     (function f(t) {
       const p = Math.min(1, (t - t1) / dur);
@@ -499,7 +499,7 @@ async function submit(from, skip) {
   const q = QUESTIONS[qi], value = skip ? '' : valueOf(q), fresh = has(value) && !got.has(q.key);
   if (!skip) { drafts[q.key] = draft; draftsOther[q.key] = otherText; }
   if (q.key === 'talks' && !skip) {
-    const t = Array.isArray(value) ? value : [];
+    const t = Array.isArray(value) ? value.slice() : [];
     if (JSON.stringify(t) !== JSON.stringify(talksChosen)) delete drafts.rate;
     talksChosen = t;
   }
