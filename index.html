@@ -178,7 +178,7 @@ input[type=text]:focus { outline: none; border-color: var(--red); box-shadow: 0 
       </div>
       <div class="tray" id="tray"></div>
       <button class="spin" id="spinBtn" type="button"></button>
-      <p class="odds">Land on the gold slice to win <b id="prize"></b>. The odds are 1 in 240 per spin.</p>
+      <p class="odds">You get another chance to enter for every question you answer!</p>
       <p class="result" id="result" role="status" aria-live="polite"></p>
     </section>
     <section class="card" id="card" aria-live="polite"></section>
@@ -242,7 +242,6 @@ let saved = ''; try { saved = localStorage.getItem('email') || ''; } catch (e) {
 let qi = 0, draft = null, coins = 0, used = 0, busy = false, spinning = false, won = false, started = false, rot = 0, lastMsg = -1;
 
 $('evt').textContent = CONFIG.eventName;
-$('prize').textContent = CONFIG.prize;
 $('winPrize').textContent = CONFIG.prize;
 $('foot').textContent = CONFIG.endpoint ? 'Your answers are saved as you go.' : 'Demo mode: nothing is being saved yet. Add your endpoint in index.html.';
 
