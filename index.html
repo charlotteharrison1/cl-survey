@@ -242,7 +242,7 @@ const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 let email = '';
 let saved = ''; try { saved = localStorage.getItem('email') || ''; } catch (e) {}
 
-let qi = 0, draft = null, coins = 0, used = 0, busy = false, spinning = false, won = false, started = false, rot = 0, lastMsg = -1;
+let qi = 0, draft = null, coins = 0, used = 0, busy = false, spinning = false, waiting = false, won = false, started = false, rot = 0, lastMsg = -1;
 
 $('evt').textContent = CONFIG.eventName;
 $('winPrize').textContent = CONFIG.prize;
@@ -331,8 +331,8 @@ async function runSpin(getResult) {
   await new Promise(done => {
     (function f(t) {
       const dt = t - last; last = t;
-      rot += dt * Math.min(.008, (t - t0) * .00002); tick(); draw();
-      if (!res && !err && t - t0 > 30000) err = new Error('timeout');
+      rot += dt * Math.min(.005, (t - t0) * .00002); tick(); draw();
+      if (!res && !err && t - t0 > 15000) err = new Error('timeout');
       if ((res || err) && t - t0 > 200) return done();
       requestAnimationFrame(f);
     })(t0);
@@ -362,7 +362,7 @@ function renderTray(pending = -1) {
   $('stage').classList.toggle('locked', left <= 0 && !spinning);
   b.disabled = left <= 0 || spinning;
   b.classList.toggle('ready', left > 0 && !spinning);
-  b.textContent = spinning ? 'Spinning…' : left > 0 ? `Spin the wheel (${left})` : !started ? 'Enter your email to unlock' : coins === 0 ? 'Answer a question to unlock' : qi >= N ? 'No spins left' : 'Answer to earn a spin';
+  b.textContent = spinning ? (waiting ? 'Saving your answers…' : 'Spinning…') : left > 0 ? `Spin the wheel (${left})` : !started ? 'Enter your email to unlock' : coins === 0 ? 'Answer a question to unlock' : qi >= N ? 'No spins left' : 'Answer to earn a spin';
   hub.innerHTML = left > 0 || spinning ? 'SPIN' : LOCK;
 }
 function flyCoin(from, idx) {
@@ -387,10 +387,12 @@ async function spin() {
     const h = $('hub'); h.classList.remove('shake'); void h.offsetWidth; h.classList.add('shake');
     $('result').textContent = 'Answer a question to earn a coin, then the wheel unlocks.'; return;
   }
-  spinning = true; $('result').textContent = ''; renderTray();
+  spinning = true; waiting = true; $('result').textContent = ''; renderTray();
   $('stage').scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
   try {
-    const res = await runSpin(() => chain.then(() => api({ action: 'spin' }, 1)));
+    await Promise.race([chain, sleep(20000)]);   // let pending answers save first; the wheel stays still meanwhile
+    waiting = false; renderTray();
+    const res = await runSpin(() => api({ action: 'spin' }, 1));
     used = res.used; coins = Math.max(coins, res.coins);
     if (res.won) { won = true; $('result').textContent = 'Gold! You won ' + CONFIG.prize + '.'; confetti(); showWin(); }
     else {
@@ -400,7 +402,7 @@ async function spin() {
   } catch (e) {
     $('result').textContent = e.message === 'No spins left' ? 'Your last answer is still saving. Try the wheel again in a moment.' : 'The wheel could not reach the server. Check your connection and try again.';
   }
-  spinning = false; renderTray(); if (qi >= N) renderCard();
+  spinning = false; waiting = false; renderTray(); if (qi >= N) renderCard();
 }
 $('spinBtn').onclick = $('hub').onclick = spin;
 

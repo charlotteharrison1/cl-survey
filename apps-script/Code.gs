@@ -28,7 +28,7 @@ const TALKS = [           // must match TALKS in index.html exactly
   'The Campaign Fringe Awards and Drinks Reception',
 ];
 const TEXT = { how: 'How heard', experience: 'Experience', talks: 'Talks attended', future: 'Future events', comments: 'Comments' };
-const short = t => t.slice(0, 50);
+const short = t => String(t || '').slice(0, 50);
 const HEAD = ['Started', 'Email', 'Step', 'Earned', 'Coins', 'Spins used', 'Spin results', 'Prize won', 'How heard', 'Experience', 'Talks attended']
   .concat(TALKS.map(t => 'Enjoyed: ' + short(t)), TALKS.map(t => 'Informative: ' + short(t)), ['Session feedback', 'Future events', 'Comments']);
 const col = name => HEAD.indexOf(name) + 1;
