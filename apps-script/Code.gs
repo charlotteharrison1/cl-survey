@@ -29,7 +29,7 @@ const TALKS = [           // must match TALKS in index.html exactly
 ];
 const TEXT = { how: 'How heard', experience: 'Experience', talks: 'Talks attended', future: 'Future events', comments: 'Comments' };
 const short = t => String(t || '').slice(0, 50);
-const HEAD = ['Started', 'Email', 'Step', 'Earned', 'Coins', 'Spins used', 'Spins shown', 'Spin results', 'Prize won', 'How heard', 'Experience', 'Talks attended']
+const HEAD = ['Started', 'Email', 'Step', 'Earned', 'Coins', 'Spins drawn', 'Spins shown', 'Spin results', 'Prize won', 'How heard', 'Experience', 'Talks attended']
   .concat(TALKS.map(t => 'Enjoyed: ' + short(t)), TALKS.map(t => 'Informative: ' + short(t)), ['Session feedback', 'Future events', 'Comments']);
 const col = name => HEAD.indexOf(name) + 1;
 
@@ -98,33 +98,33 @@ function handle(r) {
   } else if (r.action === 'bonus') {
     if ((Number(get('Step')) || 0) < NQ) throw new Error('Finish the questions first');
     earn('bonus');
-  } else if (r.action === 'spin') {
-    if ((Number(get('Spins used')) || 0) >= (Number(get('Coins')) || 0)) throw new Error('No spins left');
   } else throw new Error('Unknown action');
 
-  // Draw a result for every coin earned and not yet drawn, in this same request.
-  // Slice 0 is the gold one. The wheel draws 50 slices but gold comes up 1 time in WIN_ODDS.
-  let used = Number(get('Spins used')) || 0;
-  const coinsNow = Number(get('Coins')) || 0;
-  if (used < coinsNow) {
-    let golds = data.filter((y, i) => i > 0 && y[col('Prize won') - 1] === 'YES').length;
-    const list = String(get('Spin results')).split(/[ ,]+/).filter(x => x !== '');
-    while (used < coinsNow) {
-      const gold = Math.floor(Math.random() * WIN_ODDS) === 0 && golds < PRIZE_LIMIT;
-      if (gold) { golds++; set('Prize won', 'YES'); }
+  // Draw every spin result this person can ever get (one per question plus the bonus), once, on their first request.
+  // Slice 0 is the gold one. The wheel draws 50 slices but gold comes up 1 time in WIN_ODDS, at most once per person,
+  // and never once PRIZE_LIMIT people have been given one (a gold result is "given" when it is drawn).
+  const TOTAL = NQ + 1;
+  const list = String(get('Spin results')).split(/[ ,]+/).filter(x => x !== '').map(Number);
+  if (list.length < TOTAL) {
+    let golds = data.filter((y, i) => i > 0 && String(y[col('Spin results') - 1]).split(/[ ,]+/).indexOf('0') >= 0).length;
+    while (list.length < TOTAL) {
+      const gold = list.indexOf(0) < 0 && golds < PRIZE_LIMIT && Math.floor(Math.random() * WIN_ODDS) === 0;
+      if (gold) golds++;
       list.push(gold ? 0 : 1 + Math.floor(Math.random() * (SLICES - 1)));
-      used++;
     }
-    set('Spins used', used);
     set('Spin results', list.join(' '));   // space-separated so Sheets keeps it as text
+    set('Spins drawn', list.length);
   }
-  if (r.shown) set('Spins shown', Math.max(Number(get('Spins shown')) || 0, Math.min(used, Number(r.shown) || 0)));
+  // A win only counts if the gold result is within the spins this person has actually earned.
+  const earnedSpins = Math.min(list.length, Number(get('Coins')) || 0);
+  if (list.slice(0, earnedSpins).indexOf(0) >= 0) set('Prize won', 'YES');
+  if (r.shown) set('Spins shown', Math.max(Number(get('Spins shown')) || 0, Math.min(earnedSpins, Number(r.shown) || 0)));
   save();
   return {
-    coins: Number(get('Coins')) || 0, used: used, step: Number(get('Step')) || 0,
+    coins: Number(get('Coins')) || 0, step: Number(get('Step')) || 0,
     won: get('Prize won') === 'YES', bonus: earned().indexOf('bonus') >= 0, earned: earned(),
     talks: String(get('Talks attended')).split(' | ').filter(Boolean),
     shown: Number(get('Spins shown')) || 0,
-    results: String(get('Spin results')).split(/[ ,]+/).filter(x => x !== '').map(Number),
+    results: list,
   };
 }

@@ -41,8 +41,9 @@ h1 { margin: 0; font: 400 clamp(38px, 6.5vw, 64px)/1.02 var(--display); text-tra
 .stage { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
 .wheel { position: relative; width: min(100%, 380px); aspect-ratio: 1; max-width: 100%; }
 @media (max-width: 859px) { .wheel { width: min(54vw, 200px); } }
-#cv { width: 100%; height: 100%; display: block; transition: filter .6s, opacity .6s; filter: drop-shadow(0 18px 24px var(--shadow)); }
-.locked #cv { filter: grayscale(.7) brightness(1.08) drop-shadow(0 18px 24px var(--shadow)); opacity: .8; }
+#cv { width: 100%; height: 100%; display: block; transition: filter .6s, opacity .6s; }
+.wheel::before { content: ''; position: absolute; inset: 2%; border-radius: 50%; box-shadow: 0 18px 28px var(--shadow); }
+.locked #cv { filter: grayscale(.7) brightness(1.08); opacity: .8; }
 .pointer { position: absolute; left: 50%; top: -3%; width: 9%; transform: translateX(-50%); transform-origin: 50% 20%; filter: drop-shadow(0 3px 3px rgba(0,0,0,.25)); }
 .hub {
   position: absolute; inset: 0; margin: auto; width: 24%; aspect-ratio: 1; border-radius: 50%;
@@ -161,6 +162,35 @@ input[type=text]:focus { outline: none; border-color: var(--red); box-shadow: 0 
 .back { border: 2px solid var(--line); background: var(--card); border-radius: 999px; padding: 11px 22px; font-weight: 700; transition: transform .12s, border-color .2s; }
 .back:hover { border-color: var(--pink); }
 .back:active { transform: scale(.95); }
+@media (min-width: 860px) {
+  body { font-size: 15px; }
+  .wrap { max-width: 900px; padding-top: 20px; }
+  .top { margin-bottom: 18px; }
+  h1 { font-size: clamp(30px, 4vw, 42px); }
+  h2 { font-size: clamp(22px, 2.6vw, 27px); }
+  .kicker { font-size: 12px; }
+  .lede { font-size: 15px; }
+  .logo { width: clamp(90px, 12vw, 150px); }
+  .grid { gap: 32px; }
+  .wheel { width: min(100%, 300px); }
+  .stage { gap: 10px; }
+  .slot { width: 32px; height: 32px; }
+  .tray { min-height: 36px; gap: 8px; }
+  .spin { padding: 11px 24px; font-size: 18px; min-width: 200px; }
+  .spin:disabled { font-size: 15px; }
+  .odds { font-size: 13px; }
+  .card { padding: 24px; border-radius: 24px; }
+  .step { gap: 14px; }
+  .opt { padding: 8px 14px; font-size: 15px; }
+  .opts.list .opt { padding: 9px 14px; }
+  .heart { width: 42px; }
+  .hearts.sm .heart { width: 32px; }
+  .talk { padding: 12px 14px; }
+  .rrow span { font-size: 14px; }
+  textarea { min-height: 96px; padding: 10px 14px; }
+  .next, .back { padding: 10px 22px; font-size: 15px; }
+  .hint { font-size: 14px; }
+}
 </style>
 </head>
 <body>
@@ -260,9 +290,8 @@ async function demoApi(b) {
   if (b.shown) demo.shown = Math.max(demo.shown, b.shown);
   if (b.action === 'answer') { demo.step = Math.max(demo.step, b.step); if (has(b.value)) demo.earned[b.q] = 1; }
   else if (b.action === 'bonus') demo.earned.bonus = 1;
-  else if (b.action === 'spin' && demo.results.length >= dCoins()) throw new Error('No spins left');
-  while (demo.results.length < dCoins()) demo.results.push(Math.floor(Math.random() * ODDS) === 0 ? 0 : 1 + Math.floor(Math.random() * (SLICES - 1)));
-  return { coins: dCoins(), used: demo.results.length, step: demo.step, won: demo.results.includes(0), bonus: !!demo.earned.bonus, talks: [], earned: Object.keys(demo.earned), shown: demo.shown, results: demo.results.slice() };
+  while (demo.results.length < TOTAL) demo.results.push(demo.results.includes(0) || Math.floor(Math.random() * ODDS) !== 0 ? 1 + Math.floor(Math.random() * (SLICES - 1)) : 0);
+  return { coins: dCoins(), step: demo.step, won: demo.results.slice(0, dCoins()).includes(0), bonus: !!demo.earned.bonus, talks: [], earned: Object.keys(demo.earned), shown: demo.shown, results: demo.results.slice() };
 }
 async function api(body, tries = 3) {
   body.email = email; body.shown = used;
@@ -382,8 +411,9 @@ function flyCoin(from, idx) {
   anim.onfinish = () => { el.remove(); slot.classList.remove('pending'); };
 }
 const MISS = ['Not this one. The next spin is a fresh 1 in 50.', 'Almost felt like it. Try again.', 'Pink this time, gold next time.', 'The wheel says no. The wheel is fickle.', 'No prize yet, but that was a great spin.'];
-// The server draws each spin result in the same request that saves the answer, so the page already holds it
-// when the person presses spin. Normally spinning makes no request of its own.
+// All of this person's spin results are drawn by the server once, at sign-in, and sent to the page.
+// Spinning only reveals the next one, so it never waits on a request. The server only counts a win
+// when the gold result sits within the coins the person has actually earned.
 const absorb = r => { if (r.results && r.results.length > drawn.length) drawn = r.results; coins = Math.max(coins, r.coins); };
 async function spin() {
   if (spinning) return;
@@ -394,25 +424,24 @@ async function spin() {
   spinning = true; $('result').textContent = ''; renderTray();
   $('stage').scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
   try {
-    if (drawn.length <= used) {                   // the save that carries this result has not come back yet
+    if (drawn.length <= used) {                   // sign-in has not come back yet (slow or cold server)
       waiting = true; renderTray();
       const t0 = Date.now();
       while (drawn.length <= used && pendingCalls > 0 && Date.now() - t0 < 25000) await sleep(100);
-      if (drawn.length <= used) absorb(await api({ action: 'spin' }, 1));   // last resort: ask for the draw directly
       if (drawn.length <= used) throw new Error('timeout');
       waiting = false; renderTray();
     }
     const slice = drawn[used];
     const res = await runSpin(() => Promise.resolve({ slice, won: slice === 0 }));
     used++;
-    api({ action: 'seen' }, 1).catch(() => {});   // tell the server how many results were watched; nothing waits on it
+    api({ action: 'seen' }, 1).catch(() => {});   // reports how many results were watched; nothing waits on it
     if (res.won) { won = true; $('result').textContent = 'Gold! You won ' + CONFIG.prize + '.'; confetti(); showWin(); }
     else {
       let m; do { m = Math.floor(Math.random() * MISS.length); } while (m === lastMsg); lastMsg = m;
       $('result').textContent = (res.slice === 1 || res.slice === SLICES - 1) ? 'So close! One slice away from gold.' : MISS[m];
     }
   } catch (e) {
-    $('result').textContent = e.message === 'No spins left' ? 'Your last answer did not save yet. Try the wheel again in a moment.' : 'The wheel could not reach the server. Check your connection and try again.';
+    $('result').textContent = 'The wheel could not reach the server. Check your connection and try again.';
   }
   spinning = false; waiting = false; renderTray(); if (qi >= N) renderCard();
 }
@@ -465,7 +494,7 @@ card.addEventListener('submit', async e => {
   // Show the first question straight away; the server catches up in the background.
   renderTray(); renderCard(); toCard();
   queue(() => api({ action: 'start' })).then(r => {
-    if ((r.step || 0) > 0 || r.used > 0) {   // r.used = results drawn by the server   // returning respondent: restore their progress
+    if ((r.step || 0) > 0 || r.shown > 0) {   // returning respondent: restore their progress
       coins = r.coins; used = r.shown || 0; drawn = r.results || []; won = !!r.won && !drawn.slice(used).includes(0); bonus = !!r.bonus; talksChosen = r.talks || []; got = new Set(r.earned || []);
       qi = Math.min(r.step || 0, N); draft = null; while (QUESTIONS[qi] && QUESTIONS[qi].type === 'rate' && !talksChosen.length) qi++;
       $('result').textContent = 'Welcome back. Picking up where you left off.';
