@@ -54,24 +54,26 @@ function handle(r) {
   const sh = ss.getSheetByName('Responses') || ss.insertSheet('Responses');
   if (sh.getLastRow() === 0) { sh.appendRow(HEAD); sh.setFrozenRows(1); }
 
-  // Read the respondent's whole row once and write it back once: each sheet call is slow.
-  const W = HEAD.length, last = sh.getLastRow();
-  const emails = last > 1 ? sh.getRange(2, col('Email'), last - 1, 1).getValues() : [];
-  const at = emails.findIndex(x => String(x[0]).toLowerCase() === email);
-  const row = at >= 0 ? at + 2 : last + 1;
-  const v = at >= 0 ? sh.getRange(row, 1, 1, W).getValues()[0] : HEAD.map(() => '');
-  if (at < 0) { v[0] = new Date(); v[col('Email') - 1] = email; }
+  // One read of the sheet and one write of the respondent's row: every sheet call is slow.
+  const W = HEAD.length;
+  const data = sh.getDataRange().getValues();
+  const ec = col('Email') - 1;
+  const at = data.findIndex((x, i) => i > 0 && String(x[ec]).toLowerCase() === email);
+  const row = at >= 0 ? at + 1 : data.length + 1;
+  const v = at >= 0 ? data[at].slice(0, W) : HEAD.map(() => '');
+  while (v.length < W) v.push('');
+  if (at < 0) { v[0] = new Date(); v[ec] = email; }
   const get = name => v[col(name) - 1];
   const set = (name, x) => { v[col(name) - 1] = x; };
   const save = () => {
-    if (row > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), 100);
+    if (at < 0 && row > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), 100);
     sh.getRange(row, 1, 1, W).setValues([v.map(x => typeof x === 'string' ? safe(x) : x)]);
   };
   const earned = () => String(get('Earned')).split(',').filter(Boolean);
   const earn = key => { const e = earned(); if (e.indexOf(key) < 0) { e.push(key); set('Earned', e.join(',')); set('Coins', e.length); } };
 
   if (r.action === 'start') {
-    earn('email');
+    // nothing to record: signing in earns no coin
   } else if (r.action === 'answer') {
     const x = r.value;
     let any = false;
@@ -97,7 +99,7 @@ function handle(r) {
   } else if (r.action === 'spin') {
     const used = Number(get('Spins used')) || 0;
     if (used >= (Number(get('Coins')) || 0)) throw new Error('No spins left');
-    const prizes = last > 1 ? sh.getRange(2, col('Prize won'), last - 1, 1).getValues().filter(y => y[0] === 'YES').length : 0;
+    const prizes = data.filter((y, i) => i > 0 && y[col('Prize won') - 1] === 'YES').length;
     // Slice 0 is the gold one. The wheel draws 50 slices but gold comes up 1 time in WIN_ODDS.
     const gold = Math.floor(Math.random() * WIN_ODDS) === 0 && prizes < PRIZE_LIMIT;
     const slice = gold ? 0 : 1 + Math.floor(Math.random() * (SLICES - 1));

@@ -220,7 +220,7 @@ const TALKS = [
   'What Moves People: Lessons from the US Campaign Trail',
   'The Campaign Fringe Awards and Drinks Reception',
 ];
-// Sign-in earns the first coin, each question below earns one, and the thank-you earns a bonus spin.
+// Each question below earns one coin, and the thank-you earns a bonus spin. Signing in earns nothing.
 const QUESTIONS = [
   { key: 'how', type: 'single', list: true, other: 'Other (please specify)', title: 'How did you hear about the Fringe?', options: ['Campaign Lab social media', 'Campaign Lab newsletter', 'Word of mouth', 'Labour conference app', 'Leaflet distributed at Labour conference', 'Social media post from someone other than Campaign Lab', 'Came to support a specific talk or training', 'Other (please specify)'] },
   { key: 'experience', type: 'single', list: true, title: 'Which of these best describes your experience of the Fringe?', options: ['I came for a specific event and stayed for more', 'I came for a specific event and only stayed for that event', 'I came for the Fringe as a whole', "I came to see the stalls and didn't attend a talk or training"] },
@@ -231,7 +231,7 @@ const QUESTIONS = [
 ];
 // ---- End edit ----
 
-const ODDS = 240, SLICES = 50, N = QUESTIONS.length, TOTAL = N + 2, TAU = Math.PI * 2, A = TAU / SLICES;
+const ODDS = 240, SLICES = 50, N = QUESTIONS.length, TOTAL = N + 1, TAU = Math.PI * 2, A = TAU / SLICES;
 const $ = id => document.getElementById(id);
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -257,7 +257,7 @@ const has = v => typeof v === 'string' ? v.trim() !== '' : Array.isArray(v) ? v.
 async function demoApi(b) {
   await sleep(250);
   const st = () => ({ coins: dCoins(), used: demo.used, step: demo.step, won: false, bonus: !!demo.earned.bonus, talks: [], earned: Object.keys(demo.earned) });
-  if (b.action === 'start') { demo.earned.email = 1; return st(); }
+  if (b.action === 'start') return st();
   if (b.action === 'answer') { demo.step = Math.max(demo.step, b.step); if (has(b.value)) demo.earned[b.q] = 1; return st(); }
   if (b.action === 'bonus') { demo.earned.bonus = 1; return st(); }
   if (b.action === 'spin') { if (demo.used >= dCoins()) throw new Error('No spins left'); demo.used++; const s = Math.floor(Math.random() * ODDS) === 0 ? 0 : 1 + Math.floor(Math.random() * (SLICES - 1)); return Object.assign(st(), { slice: s, won: s === 0 }); }
@@ -268,7 +268,7 @@ async function api(body, tries = 3) {
   if (!CONFIG.endpoint) return demoApi(body);
   for (let t = 1; ; t++) {
     try {
-      const r = await fetch(CONFIG.endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
+      const r = await fetch(CONFIG.endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
       const j = await r.json();
       if (j.error) throw Object.assign(new Error(j.error), { fatal: true });
       return j;
@@ -332,11 +332,13 @@ async function runSpin(getResult) {
     (function f(t) {
       const dt = t - last; last = t;
       rot += dt * Math.min(.008, (t - t0) * .00002); tick(); draw();
+      if (!res && !err && t - t0 > 30000) err = new Error('timeout');
       if ((res || err) && t - t0 > 200) return done();
       requestAnimationFrame(f);
     })(t0);
   });
   if (err) throw err;
+  if (typeof res.slice !== 'number') throw new Error('bad reply');
   const dur = reduce ? 1000 : 1300;
   const jit = (Math.random() - .5) * .7;
   const want = -((res.slice + .5 + jit) * A);
@@ -360,7 +362,7 @@ function renderTray(pending = -1) {
   $('stage').classList.toggle('locked', left <= 0 && !spinning);
   b.disabled = left <= 0 || spinning;
   b.classList.toggle('ready', left > 0 && !spinning);
-  b.textContent = spinning ? 'Spinning…' : left > 0 ? `Spin the wheel (${left})` : coins === 0 ? 'Enter your email to unlock' : qi >= N ? 'No spins left' : 'Answer to earn a spin';
+  b.textContent = spinning ? 'Spinning…' : left > 0 ? `Spin the wheel (${left})` : !started ? 'Enter your email to unlock' : coins === 0 ? 'Answer a question to unlock' : qi >= N ? 'No spins left' : 'Answer to earn a spin';
   hub.innerHTML = left > 0 || spinning ? 'SPIN' : LOCK;
 }
 function flyCoin(from, idx) {
@@ -396,7 +398,7 @@ async function spin() {
       $('result').textContent = (res.slice === 1 || res.slice === SLICES - 1) ? 'So close! One slice away from gold.' : MISS[m];
     }
   } catch (e) {
-    $('result').textContent = 'The wheel could not reach the server. Check your connection and try again.';
+    $('result').textContent = e.message === 'No spins left' ? 'Your last answer is still saving. Try the wheel again in a moment.' : 'The wheel could not reach the server. Check your connection and try again.';
   }
   spinning = false; renderTray(); if (qi >= N) renderCard();
 }
@@ -444,18 +446,21 @@ card.addEventListener('submit', async e => {
   e.preventDefault();
   const v = $('loginEmail').value.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return renderWelcome('That email does not look right. Check it and try again.');
-  const b = $('go'); b.disabled = true; b.textContent = 'One sec…';
-  email = v;
-  try {
-    const r = await api({ action: 'start' });
-    coins = r.coins; used = r.used; won = !!r.won; started = true; bonus = !!r.bonus; talksChosen = r.talks || []; got = new Set(r.earned || []);
-    qi = Math.min(r.step || 0, N); while (QUESTIONS[qi] && QUESTIONS[qi].type === 'rate' && !talksChosen.length) qi++;
-    try { localStorage.setItem('email', v); } catch (e) {}
-    $('result').textContent = r.step > 0 ? 'Welcome back. Picking up where you left off.' : '';
-    renderTray(); renderCard(); toCard();
-    if (!r.step && !used && coins === 1) flyCoin($('card'), 0);
-    if (qi >= N) giveBonus();
-  } catch (err) { email = ''; renderWelcome(err.fatal ? 'The server replied: ' + err.message : 'Could not connect. Check your connection and try again.'); }
+  email = v; started = true; coins = 0; got = new Set(); qi = 0; draft = null;
+  try { localStorage.setItem('email', v); } catch (e) {}
+  // Show the first question straight away; the server catches up in the background.
+  renderTray(); renderCard(); toCard();
+  queue(() => api({ action: 'start' })).then(r => {
+    if ((r.step || 0) > 0 || r.used > 0) {   // returning respondent: restore their progress
+      coins = r.coins; used = r.used; won = !!r.won; bonus = !!r.bonus; talksChosen = r.talks || []; got = new Set(r.earned || []);
+      qi = Math.min(r.step || 0, N); draft = null; while (QUESTIONS[qi] && QUESTIONS[qi].type === 'rate' && !talksChosen.length) qi++;
+      $('result').textContent = 'Welcome back. Picking up where you left off.';
+      renderTray(); renderCard(); if (qi >= N) giveBonus();
+    } else sync(r);
+  }).catch(err => {
+    started = false; coins = 0; got = new Set(); email = ''; draft = null; renderTray();
+    renderWelcome(err.fatal ? 'The server replied: ' + err.message : 'Could not connect. Check your connection and try again.');
+  });
 });
 function renderCard() {
   if (!started) return renderWelcome();
@@ -533,6 +538,7 @@ card.addEventListener('input', e => {
 });
 
 renderTray(); renderCard();
+if (CONFIG.endpoint) fetch(CONFIG.endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: '{"action":"warm"}' }).catch(() => {});
 </script>
 </body>
 </html>
