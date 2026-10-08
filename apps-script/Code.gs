@@ -87,7 +87,7 @@ function handle(r) {
       if (fb) { set('Session feedback', fb); any = true; }
     } else if (TEXT[r.q]) {
       const t = Array.isArray(x) ? x.map(z => str(z, 300)).filter(Boolean).join(' | ') : str(x, 1000);
-      if (t && get(TEXT[r.q]) === '') { set(TEXT[r.q], t); any = true; }
+      if (t) { set(TEXT[r.q], t); any = true; }   // later edits (via Back) overwrite; the coin is still earned once
     } else throw new Error('Unknown question');
     set('Step', Math.max(Number(get('Step')) || 0, Math.min(NQ, Number(r.step) || 0)));
     if (any) earn(r.q);
@@ -111,7 +111,7 @@ function handle(r) {
   save();
   return {
     coins: Number(get('Coins')) || 0, used: Number(get('Spins used')) || 0, step: Number(get('Step')) || 0,
-    won: get('Prize won') === 'YES', bonus: earned().indexOf('bonus') >= 0,
+    won: get('Prize won') === 'YES', bonus: earned().indexOf('bonus') >= 0, earned: earned(),
     talks: String(get('Talks attended')).split(' | ').filter(Boolean),
   };
 }

@@ -39,8 +39,8 @@ h1 { margin: 0; font: 400 clamp(38px, 6.5vw, 64px)/1.02 var(--display); text-tra
 
 /* wheel */
 .stage { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
-.wheel { position: relative; width: min(100%, 440px); aspect-ratio: 1; max-width: 100%; }
-@media (max-width: 859px) { .wheel { width: min(60vw, 230px); } }
+.wheel { position: relative; width: min(100%, 380px); aspect-ratio: 1; max-width: 100%; }
+@media (max-width: 859px) { .wheel { width: min(54vw, 200px); } }
 #cv { width: 100%; height: 100%; display: block; transition: filter .6s, opacity .6s; filter: drop-shadow(0 18px 24px var(--shadow)); }
 .locked #cv { filter: grayscale(.7) brightness(1.08) drop-shadow(0 18px 24px var(--shadow)); opacity: .8; }
 .pointer { position: absolute; left: 50%; top: -3%; width: 9%; transform: translateX(-50%); transform-origin: 50% 20%; filter: drop-shadow(0 3px 3px rgba(0,0,0,.25)); }
@@ -158,6 +158,9 @@ input[type=text]:focus { outline: none; border-color: var(--red); box-shadow: 0 
   .spin { min-width: 0; padding: 11px 24px; font-size: 18px; }
   .spin:disabled { font-size: 15px; }
 }
+.back { border: 2px solid var(--line); background: var(--card); border-radius: 999px; padding: 11px 22px; font-weight: 700; transition: transform .12s, border-color .2s; }
+.back:hover { border-color: var(--pink); }
+.back:active { transform: scale(.95); }
 </style>
 </head>
 <body>
@@ -253,7 +256,7 @@ const dCoins = () => Object.keys(demo.earned).length;
 const has = v => typeof v === 'string' ? v.trim() !== '' : Array.isArray(v) ? v.length > 0 : !!v && (Object.keys(v.ratings || {}).length > 0 || String(v.feedback || '').trim() !== '');
 async function demoApi(b) {
   await sleep(250);
-  const st = () => ({ coins: dCoins(), used: demo.used, step: demo.step, won: false, bonus: !!demo.earned.bonus, talks: [] });
+  const st = () => ({ coins: dCoins(), used: demo.used, step: demo.step, won: false, bonus: !!demo.earned.bonus, talks: [], earned: Object.keys(demo.earned) });
   if (b.action === 'start') { demo.earned.email = 1; return st(); }
   if (b.action === 'answer') { demo.step = Math.max(demo.step, b.step); if (has(b.value)) demo.earned[b.q] = 1; return st(); }
   if (b.action === 'bonus') { demo.earned.bonus = 1; return st(); }
@@ -334,11 +337,11 @@ async function runSpin(getResult) {
     })(t0);
   });
   if (err) throw err;
-  const dur = reduce ? 1200 : 3500;
+  const dur = reduce ? 1200 : 2000;
   const jit = (Math.random() - .5) * .7;
   const want = -((res.slice + .5 + jit) * A);
   const delta = (((want - rot) % TAU) + TAU) % TAU;
-  const total = TAU + delta, start = rot, t1 = performance.now();
+  const total = TAU / 2 + delta, start = rot, t1 = performance.now();
   await new Promise(done => {
     (function f(t) {
       const p = Math.min(1, (t - t1) / dur);
@@ -417,7 +420,7 @@ function confetti() {
 
 // ---- questions ----
 const card = $('card');
-let talksChosen = [], bonus = false, otherText = '';
+let talksChosen = [], bonus = false, otherText = '', got = new Set(), drafts = {}, draftsOther = {};
 const dots = () => `<div class="dots" aria-hidden="true">${QUESTIONS.map((_, i) => `<span class="dot ${i < qi ? 'done' : i === qi ? 'now' : ''}"></span>`).join('')}<span class="count">${Math.min(qi + 1, N)} of ${N}</span></div>`;
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const newDraft = q => q.type === 'multi' ? [] : q.type === 'rate' ? { r: {}, fb: '' } : '';
@@ -445,7 +448,7 @@ card.addEventListener('submit', async e => {
   email = v;
   try {
     const r = await api({ action: 'start' });
-    coins = r.coins; used = r.used; won = !!r.won; started = true; bonus = !!r.bonus; talksChosen = r.talks || [];
+    coins = r.coins; used = r.used; won = !!r.won; started = true; bonus = !!r.bonus; talksChosen = r.talks || []; got = new Set(r.earned || []);
     qi = Math.min(r.step || 0, N); while (QUESTIONS[qi] && QUESTIONS[qi].type === 'rate' && !talksChosen.length) qi++;
     try { localStorage.setItem('email', v); } catch (e) {}
     $('result').textContent = r.step > 0 ? 'Welcome back. Picking up where you left off.' : '';
@@ -457,7 +460,8 @@ card.addEventListener('submit', async e => {
 function renderCard() {
   if (!started) return renderWelcome();
   if (qi >= N) return renderDone();
-  const q = QUESTIONS[qi]; if (draft === null) draft = newDraft(q);
+  const q = QUESTIONS[qi];
+  if (draft === null) { draft = drafts[q.key] !== undefined ? drafts[q.key] : newDraft(q); otherText = draftsOther[q.key] || ''; }
   let body = '';
   if (q.type === 'single' || q.type === 'multi')
     body = `<div class="opts ${q.list ? 'list' : ''} ${q.type}">${q.options.map(o => `<button type="button" class="opt" data-opt="${esc(o)}" aria-pressed="${q.type === 'multi' ? draft.includes(o) : draft === o}">${esc(o)}</button>`).join('')}</div>`
@@ -466,14 +470,14 @@ function renderCard() {
     body = talksChosen.map((t, i) => `<div class="talk">${heartRow(i, 'e', `How much did you enjoy <b>${esc(t)}</b>?`, (draft.r[i] || {}).e || 0)}${heartRow(i, 'i', `How informative was <b>${esc(t)}</b>?`, (draft.r[i] || {}).i || 0)}</div>`).join('')
       + `<p class="hint" style="margin:0">Do you have any specific feedback for these events?</p><textarea id="ans" maxlength="1000" aria-label="Do you have any specific feedback for these events?">${esc(draft.fb)}</textarea>`;
   else body = `<textarea id="ans" maxlength="1000" aria-label="${esc(q.title)}">${esc(draft)}</textarea>`;
-  const needsNext = q.type !== 'single' || (q.other && draft === q.other);
   card.innerHTML = `<div class="step">${dots()}${q.title ? `<h2>${esc(q.title)}</h2>` : ''}${q.hint ? `<p class="hint">${esc(q.hint)}</p>` : ''}${body}
-    <div class="row">${needsNext ? `<button class="next" type="button" id="next" ${has(valueOf(q)) ? '' : 'disabled'}>${qi === N - 1 ? 'Finish' : 'Next'}</button>` : ''}
-    <button class="skip" type="button" id="skip">Skip, no coin</button><span class="earn">+1 coin</span></div></div>`;
+    <div class="row">${qi > 0 ? '<button class="back" type="button" id="back">Back</button>' : ''}<button class="next" type="button" id="next" ${has(valueOf(q)) ? '' : 'disabled'}>${qi === N - 1 ? 'Finish' : 'Next'}</button>
+    <button class="skip" type="button" id="skip">Skip, no coin</button>${got.has(q.key) ? '' : '<span class="earn">+1 coin</span>'}</div></div>`;
 }
 function renderDone() {
   card.innerHTML = `<div class="step done">${dots().replace(/<span class="count">.*<\/span>/, '')}<h2>Thank you for your feedback!</h2>
     <p>Here's an extra spin.</p>
+    <div class="row"><button class="back" type="button" id="back">Back</button></div>
     ${won ? `<p><b>You won ${esc(CONFIG.prize)}. We will email ${esc(email)}.</b></p>` : ''}</div>`;
 }
 const toCard = () => { if (innerWidth < 860) card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); };
@@ -484,24 +488,37 @@ async function giveBonus() {
   coins++; flyCoin($('card'), coins - 1);
   queue(() => api({ action: 'bonus' })).then(sync).catch(saveFail);
 }
+function goBack() {
+  const q = QUESTIONS[qi];
+  if (q && draft !== null) { drafts[q.key] = draft; draftsOther[q.key] = otherText; }
+  let p = qi - 1; while (p > 0 && QUESTIONS[p].type === 'rate' && !talksChosen.length) p--;
+  qi = Math.max(p, 0); draft = null; renderTray(); renderCard(); toCard();
+}
 async function submit(from, skip) {
   if (busy) return; busy = true;
-  const q = QUESTIONS[qi], value = skip ? '' : valueOf(q), earn = has(value);
-  if (q.key === 'talks') talksChosen = Array.isArray(value) ? value : [];
+  const q = QUESTIONS[qi], value = skip ? '' : valueOf(q), fresh = has(value) && !got.has(q.key);
+  if (!skip) { drafts[q.key] = draft; draftsOther[q.key] = otherText; }
+  if (q.key === 'talks' && !skip) {
+    const t = Array.isArray(value) ? value : [];
+    if (JSON.stringify(t) !== JSON.stringify(talksChosen)) delete drafts.rate;
+    talksChosen = t;
+  }
   let next = qi + 1; while (QUESTIONS[next] && QUESTIONS[next].type === 'rate' && !talksChosen.length) next++;
-  if (earn) { coins++; flyCoin(from, coins - 1); }
-  queue(() => api({ action: 'answer', q: q.key, value, step: next })).then(sync).catch(saveFail);
-  await sleep(earn && !reduce ? 650 : 0);
+  if (fresh) { got.add(q.key); coins++; flyCoin(from, coins - 1); }
+  if (has(value) || skip) queue(() => api({ action: 'answer', q: q.key, value, step: next })).then(sync).catch(saveFail);
+  await sleep(fresh && !reduce ? 650 : 0);
   qi = next; draft = null; otherText = ''; busy = false; renderTray(); renderCard(); toCard();
   if (qi >= N) giveBonus();
 }
 card.addEventListener('click', e => {
-  const t = e.target.closest('button'); if (!t || busy || !started || qi >= N) return;
+  const t = e.target.closest('button'); if (!t || busy || !started) return;
+  if (t.id === 'back') { if (qi >= N) { qi = N - 1; draft = null; renderCard(); toCard(); } else goBack(); return; }
+  if (qi >= N) return;
   const q = QUESTIONS[qi];
   if (t.dataset.opt !== undefined) {
     if (q.type === 'single') {
       if (q.other && t.dataset.opt === q.other) { draft = q.other; renderCard(); const o = $('other'); if (o) o.focus(); return; }
-      draft = t.dataset.opt; t.setAttribute('aria-pressed', 'true'); submit(t);
+      draft = t.dataset.opt; t.parentNode.querySelectorAll('.opt').forEach(o => o.setAttribute('aria-pressed', o === t)); $('next').disabled = false;
     } else { const i = draft.indexOf(t.dataset.opt); i < 0 ? draft.push(t.dataset.opt) : draft.splice(i, 1); t.setAttribute('aria-pressed', i < 0); $('next').disabled = !has(valueOf(q)); }
   } else if (t.dataset.rate) {
     const n = +t.dataset.rate; (draft.r[t.dataset.talk] ||= {})[t.dataset.kind] = n;
