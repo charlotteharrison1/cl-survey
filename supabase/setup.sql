@@ -15,11 +15,24 @@ create table if not exists public.responses (
   how_heard        text,
   experience       text,
   talks_attended   text,
+  trainings_attended text,
   ratings          jsonb       not null default '{}',
-  session_feedback text,
+  talks_feedback   text,
+  trainings_feedback text,
+  attended_awards  text,
+  awards_rating    int,
+  awards_comments  text,
   future_events    text,
   comments         text
 );
+-- Upgrade an older version of the table in place (does nothing on a fresh install).
+alter table public.responses
+  add column if not exists trainings_attended text,
+  add column if not exists talks_feedback text,
+  add column if not exists trainings_feedback text,
+  add column if not exists attended_awards text,
+  add column if not exists awards_rating int,
+  add column if not exists awards_comments text;
 
 -- Row level security with no policies: the public key can NOT read or write this table directly.
 -- The only door in is the survey() function below.
@@ -34,20 +47,21 @@ set search_path = public
 as $$
 declare
   talks constant text[] := array[
-    'Fighting the Right: What Works?',
-    'Training and discussion: Sisters Resist! Feminists Taking On the Trolls',
-    'Progressive Pushback: Campaigning Under a Labour Government',
-    'Training and discussion: Building Shared Ground with British South Asians: Challenges and Opportunities',
     'Beyond the Algorithm: Building Authentic Voices in the New Media Landscape',
-    'Training session: Beyond the Feed: Reaching Voters Where Meta and Google Can''t',
+    'Fighting the Right: What Works?',
+    'Progressive Pushback: Campaigning Under a Labour Government',
     'The AI Campaign Toolkit: Balancing Efficiency with Trust',
     'The Polling Problem: Tactics for a Fragmented Map',
-    'Training session: Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit',
     'Unions: New Tactics, Campaigns and Ideas',
-    'What Moves People: Lessons from the US Campaign Trail',
-    'The Campaign Fringe Awards and Drinks Reception'
+    'What Moves People: Lessons from the US Campaign Trail'
   ];
-  nq          constant int := 6;      -- number of questions in index.html
+  trainings constant text[] := array[
+    'Beyond the Feed: Reaching Voters Where Meta and Google Can''t',
+    'Building Shared Ground with British South Asians: Challenges and Opportunities',
+    'Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit',
+    'Sisters Resist! Feminists Taking On the Trolls'
+  ];
+  nq          constant int := 9;      -- number of questions in index.html
   slices      constant int := 50;     -- slices on the wheel; slice 0 is gold
   win_odds    constant int := 240;    -- gold comes up 1 draw in this many
   prize_limit constant int := 5;      -- at most this many people are ever dealt a gold result
@@ -61,6 +75,7 @@ declare
   t    text;
   s    text;
   fb   text;
+  allowed text[];
   e    int;
   i    int;
   n    int;
@@ -81,10 +96,11 @@ begin
   elsif act = 'answer' then
     q := req->>'q';
     v := req->'value';
-    if q = 'rate' then
+    if q in ('rate_talks', 'rate_trainings') then
+      allowed := case q when 'rate_talks' then talks else trainings end;
       new_ratings := r.ratings;
       if jsonb_typeof(v) = 'object' and jsonb_typeof(v->'ratings') = 'object' then
-        foreach t in array talks loop
+        foreach t in array allowed loop
           if jsonb_typeof(v->'ratings'->t) = 'object' then
             e := case when (v->'ratings'->t->>'e') ~ '^[1-5]$' then (v->'ratings'->t->>'e')::int end;
             i := case when (v->'ratings'->t->>'i') ~ '^[1-5]$' then (v->'ratings'->t->>'i')::int end;
@@ -100,10 +116,24 @@ begin
       fb := case when jsonb_typeof(v) = 'object' then left(btrim(coalesce(v->>'feedback', '')), 1000) else '' end;
       if fb <> '' then
         if fb ~ '^[=+@-]' then fb := chr(39) || fb; end if;   -- stop spreadsheet apps running typed formulas
-        r.session_feedback := fb;
+        if q = 'rate_talks' then r.talks_feedback := fb; else r.trainings_feedback := fb; end if;
         gained := true;
       end if;
-    elsif q in ('how', 'experience', 'talks', 'future', 'comments') then
+    elsif q = 'awards' then
+      if jsonb_typeof(v) = 'object' and (v->>'attended') in ('Yes', 'No') then
+        r.attended_awards := v->>'attended';
+        if v->>'attended' = 'Yes' then
+          r.awards_rating := case when (v->>'rating') ~ '^[1-5]$' then (v->>'rating')::int end;
+          fb := left(btrim(coalesce(v->>'comments', '')), 1000);
+          if fb ~ '^[=+@-]' then fb := chr(39) || fb; end if;
+          r.awards_comments := nullif(fb, '');
+        else
+          r.awards_rating := null;
+          r.awards_comments := null;
+        end if;
+        gained := true;
+      end if;
+    elsif q in ('how', 'experience', 'talks', 'trainings', 'future', 'comments') then
       if jsonb_typeof(v) = 'array' then
         select string_agg(left(btrim(x), 300), ' | ') into s from jsonb_array_elements_text(v) x where btrim(x) <> '';
       elsif jsonb_typeof(v) = 'string' then
@@ -116,6 +146,7 @@ begin
           when 'how' then r.how_heard := s;
           when 'experience' then r.experience := s;
           when 'talks' then r.talks_attended := s;
+          when 'trainings' then r.trainings_attended := s;
           when 'future' then r.future_events := s;
           else r.comments := s;
         end case;
@@ -165,7 +196,9 @@ begin
   update responses set
     step = r.step, earned = r.earned, coins = r.coins, spins_drawn = r.spins_drawn, spins_shown = r.spins_shown,
     spin_results = r.spin_results, prize_won = r.prize_won, how_heard = r.how_heard, experience = r.experience,
-    talks_attended = r.talks_attended, ratings = r.ratings, session_feedback = r.session_feedback,
+    talks_attended = r.talks_attended, trainings_attended = r.trainings_attended, ratings = r.ratings,
+    talks_feedback = r.talks_feedback, trainings_feedback = r.trainings_feedback,
+    attended_awards = r.attended_awards, awards_rating = r.awards_rating, awards_comments = r.awards_comments,
     future_events = r.future_events, comments = r.comments
   where email = em;
 
@@ -173,6 +206,7 @@ begin
     'coins', r.coins, 'step', r.step, 'won', r.prize_won, 'bonus', 'bonus' = any(r.earned),
     'earned', to_jsonb(r.earned),
     'talks', coalesce(to_jsonb(string_to_array(r.talks_attended, ' | ')), '[]'::jsonb),
+    'trainings', coalesce(to_jsonb(string_to_array(r.trainings_attended, ' | ')), '[]'::jsonb),
     'shown', r.spins_shown, 'results', to_jsonb(r.spin_results));
 end;
 $$;
@@ -180,36 +214,35 @@ $$;
 revoke all on function public.survey(jsonb) from public;
 grant execute on function public.survey(jsonb) to anon, authenticated;
 
--- One row per person with each talk's ratings in its own column. Open this one to read or export results.
-create or replace view public.responses_wide as
+-- One row per person with each session's ratings in its own column. Open this one to read or export results.
+drop view if exists public.responses_wide;
+create view public.responses_wide as
 select
   email, started, step, coins, spins_drawn, spins_shown, spin_results, prize_won,
-  how_heard, experience, talks_attended,
-  (ratings -> 'Fighting the Right: What Works?' ->> 'e')::int as "Enjoyed: Fighting the Right: What Works?",
-  (ratings -> 'Training and discussion: Sisters Resist! Feminists Taking On the Trolls' ->> 'e')::int as "Enjoyed: Training and discussion: Sisters Resist! Feminists",
-  (ratings -> 'Progressive Pushback: Campaigning Under a Labour Government' ->> 'e')::int as "Enjoyed: Progressive Pushback: Campaigning Under a Labour G",
-  (ratings -> 'Training and discussion: Building Shared Ground with British South Asians: Challenges and Opportunities' ->> 'e')::int as "Enjoyed: Training and discussion: Building Shared Ground wi",
+  how_heard, experience, talks_attended, trainings_attended,
   (ratings -> 'Beyond the Algorithm: Building Authentic Voices in the New Media Landscape' ->> 'e')::int as "Enjoyed: Beyond the Algorithm: Building Authentic Voices in",
-  (ratings -> 'Training session: Beyond the Feed: Reaching Voters Where Meta and Google Can''t' ->> 'e')::int as "Enjoyed: Training session: Beyond the Feed: Reaching Voters",
+  (ratings -> 'Fighting the Right: What Works?' ->> 'e')::int as "Enjoyed: Fighting the Right: What Works?",
+  (ratings -> 'Progressive Pushback: Campaigning Under a Labour Government' ->> 'e')::int as "Enjoyed: Progressive Pushback: Campaigning Under a Labour G",
   (ratings -> 'The AI Campaign Toolkit: Balancing Efficiency with Trust' ->> 'e')::int as "Enjoyed: The AI Campaign Toolkit: Balancing Efficiency with",
   (ratings -> 'The Polling Problem: Tactics for a Fragmented Map' ->> 'e')::int as "Enjoyed: The Polling Problem: Tactics for a Fragmented Map",
-  (ratings -> 'Training session: Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit' ->> 'e')::int as "Enjoyed: Training session: Campaigning Where Voters Actuall",
   (ratings -> 'Unions: New Tactics, Campaigns and Ideas' ->> 'e')::int as "Enjoyed: Unions: New Tactics, Campaigns and Ideas",
   (ratings -> 'What Moves People: Lessons from the US Campaign Trail' ->> 'e')::int as "Enjoyed: What Moves People: Lessons from the US Campaign Tr",
-  (ratings -> 'The Campaign Fringe Awards and Drinks Reception' ->> 'e')::int as "Enjoyed: The Campaign Fringe Awards and Drinks Reception",
-  (ratings -> 'Fighting the Right: What Works?' ->> 'i')::int as "Informative: Fighting the Right: What Works?",
-  (ratings -> 'Training and discussion: Sisters Resist! Feminists Taking On the Trolls' ->> 'i')::int as "Informative: Training and discussion: Sisters Resist! Feminists",
-  (ratings -> 'Progressive Pushback: Campaigning Under a Labour Government' ->> 'i')::int as "Informative: Progressive Pushback: Campaigning Under a Labour G",
-  (ratings -> 'Training and discussion: Building Shared Ground with British South Asians: Challenges and Opportunities' ->> 'i')::int as "Informative: Training and discussion: Building Shared Ground wi",
   (ratings -> 'Beyond the Algorithm: Building Authentic Voices in the New Media Landscape' ->> 'i')::int as "Informative: Beyond the Algorithm: Building Authentic Voices in",
-  (ratings -> 'Training session: Beyond the Feed: Reaching Voters Where Meta and Google Can''t' ->> 'i')::int as "Informative: Training session: Beyond the Feed: Reaching Voters",
+  (ratings -> 'Fighting the Right: What Works?' ->> 'i')::int as "Informative: Fighting the Right: What Works?",
+  (ratings -> 'Progressive Pushback: Campaigning Under a Labour Government' ->> 'i')::int as "Informative: Progressive Pushback: Campaigning Under a Labour G",
   (ratings -> 'The AI Campaign Toolkit: Balancing Efficiency with Trust' ->> 'i')::int as "Informative: The AI Campaign Toolkit: Balancing Efficiency with",
   (ratings -> 'The Polling Problem: Tactics for a Fragmented Map' ->> 'i')::int as "Informative: The Polling Problem: Tactics for a Fragmented Map",
-  (ratings -> 'Training session: Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit' ->> 'i')::int as "Informative: Training session: Campaigning Where Voters Actuall",
   (ratings -> 'Unions: New Tactics, Campaigns and Ideas' ->> 'i')::int as "Informative: Unions: New Tactics, Campaigns and Ideas",
   (ratings -> 'What Moves People: Lessons from the US Campaign Trail' ->> 'i')::int as "Informative: What Moves People: Lessons from the US Campaign Tr",
-  (ratings -> 'The Campaign Fringe Awards and Drinks Reception' ->> 'i')::int as "Informative: The Campaign Fringe Awards and Drinks Reception",
-  session_feedback, future_events, comments
+  (ratings -> 'Beyond the Feed: Reaching Voters Where Meta and Google Can''t' ->> 'e')::int as "Enjoyed: Beyond the Feed: Reaching Voters Where Meta and Go",
+  (ratings -> 'Building Shared Ground with British South Asians: Challenges and Opportunities' ->> 'e')::int as "Enjoyed: Building Shared Ground with British South Asians: ",
+  (ratings -> 'Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit' ->> 'e')::int as "Enjoyed: Campaigning Where Voters Actually Are: The New Dig",
+  (ratings -> 'Sisters Resist! Feminists Taking On the Trolls' ->> 'e')::int as "Enjoyed: Sisters Resist! Feminists Taking On the Trolls",
+  (ratings -> 'Beyond the Feed: Reaching Voters Where Meta and Google Can''t' ->> 'i')::int as "Informative: Beyond the Feed: Reaching Voters Where Meta and Go",
+  (ratings -> 'Building Shared Ground with British South Asians: Challenges and Opportunities' ->> 'i')::int as "Informative: Building Shared Ground with British South Asians: ",
+  (ratings -> 'Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit' ->> 'i')::int as "Informative: Campaigning Where Voters Actually Are: The New Dig",
+  (ratings -> 'Sisters Resist! Feminists Taking On the Trolls' ->> 'i')::int as "Informative: Sisters Resist! Feminists Taking On the Trolls",
+  talks_feedback, trainings_feedback, attended_awards, awards_rating, awards_comments, future_events, comments
 from public.responses
 order by started;
 revoke all on public.responses_wide from anon, authenticated;
