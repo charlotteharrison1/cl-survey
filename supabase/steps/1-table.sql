@@ -22,6 +22,7 @@ create table if not exists public.responses (
   trainings_feedback text,
   attended_awards  text,
   awards_rating    int,
+  awards_informative int,
   awards_comments  text,
   future_events    text,
   comments         text
@@ -33,6 +34,7 @@ alter table public.responses
   add column if not exists trainings_feedback text,
   add column if not exists attended_awards text,
   add column if not exists awards_rating int,
+  add column if not exists awards_informative int,
   add column if not exists awards_comments text;
 
 -- Row level security with no policies: the public key can NOT read or write this table directly.

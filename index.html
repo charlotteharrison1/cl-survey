@@ -255,7 +255,7 @@ const TRAINING_LIST = [
 ];
 // Each question below earns one coin, and the thank-you earns a bonus spin. Signing in earns nothing.
 const QUESTIONS = [
-  { key: 'how', type: 'single', list: true, other: 'Other (please specify)', title: 'How did you hear about the Fringe?', options: ['Campaign Lab social media', 'Campaign Lab newsletter', 'Word of mouth', 'Labour conference app', 'Leaflet distributed at Labour conference', 'Social media post from someone other than Campaign Lab', 'Came to support a specific talk or training', 'Other (please specify)'] },
+  { key: 'how', type: 'single', list: true, other: 'Other (please specify)', title: 'How did you hear about the Fringe?', options: ['Campaign Lab social media', 'Campaign Lab newsletter', 'Word of mouth', 'Labour conference app', 'Leaflet distributed at Labour conference', 'Social media post from someone other than Campaign Lab', 'Came to support a specific talk or training', 'Previous Campaign Lab Event / Previous Campaign Fringe', 'Other (please specify)'] },
   { key: 'experience', type: 'single', list: true, title: 'Which of these best describes your experience of the Fringe?', options: ['I came for a specific event and stayed for more', 'I came for a specific event and only stayed for that event', 'I came for the Fringe as a whole', "I came to see the stalls and didn't attend a talk or training"] },
   { key: 'talks', type: 'multi', list: true, none: 'None', title: 'Which talks did you attend?', options: TALK_LIST.concat('None') },
   { key: 'trainings', type: 'multi', list: true, none: 'None', title: 'Which training sessions did you attend?', options: TRAINING_LIST.concat('None') },
@@ -471,13 +471,13 @@ const card = $('card');
 let talksChosen = [], trainingsChosen = [], bonus = false, otherText = '', got = new Set(), drafts = {}, draftsOther = {};
 const dots = () => `<div class="dots" aria-hidden="true">${QUESTIONS.map((_, i) => `<span class="dot ${i < qi ? 'done' : i === qi ? 'now' : ''}"></span>`).join('')}<span class="count">${Math.min(qi + 1, N)} of ${N}</span></div>`;
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const newDraft = q => q.type === 'multi' ? [] : q.type === 'rate' ? { r: {}, fb: '' } : q.type === 'awards' ? { attended: '', e: 0, fb: '' } : q.type === 'closing' ? { fb: '', future: [] } : '';
+const newDraft = q => q.type === 'multi' ? [] : q.type === 'rate' ? { r: {}, fb: '' } : q.type === 'awards' ? { attended: '', e: 0, i: 0, fb: '' } : q.type === 'closing' ? { fb: '', future: [] } : '';
 const ratingItems = q => q.source === 'talks' ? talksChosen : trainingsChosen;
 const isSkipped = q => q.type === 'rate' && !ratingItems(q).length;   // nothing picked in the list above, so nothing to rate
 function valueOf(q) {
   if (q.type === 'single') return q.other && draft === q.other ? (otherText.trim() ? 'Other: ' + otherText.trim() : 'Other') : draft;
   if (q.type === 'closing') return { comments: draft.fb.trim(), future: draft.future };
-  if (q.type === 'awards') return draft.attended ? { attended: draft.attended, rating: draft.attended === 'Yes' ? draft.e : 0, comments: draft.attended === 'Yes' ? draft.fb : '' } : '';
+  if (q.type === 'awards') return draft.attended ? { attended: draft.attended, rating: draft.attended === 'Yes' ? draft.e : 0, informative: draft.attended === 'Yes' ? draft.i : 0, comments: draft.attended === 'Yes' ? draft.fb : '' } : '';
   if (q.type !== 'rate') return draft;
   const ratings = {}, items = ratingItems(q);
   for (const [i, x] of Object.entries(draft.r)) if (x.e || x.i) ratings[items[i]] = x;
@@ -526,7 +526,7 @@ function renderCard() {
       + `<p class="hint" style="margin:0">Do you have any specific feedback for these events?</p><textarea id="ans" maxlength="1000" aria-label="Do you have any specific feedback for these events?">${esc(draft.fb)}</textarea>`;
   else if (q.type === 'awards')
     body = `<div class="opts">${['Yes', 'No'].map(o => `<button type="button" class="opt" data-opt="${o}" aria-pressed="${draft.attended === o}">${o}</button>`).join('')}</div>`
-      + (draft.attended === 'Yes' ? `<div class="talk">${heartRow('', 'e', 'How enjoyable did you find it?', draft.e)}</div><p class="hint" style="margin:0">Other comments:</p><textarea id="ans" maxlength="1000" aria-label="Other comments">${esc(draft.fb)}</textarea>` : '');
+      + (draft.attended === 'Yes' ? `<div class="talk">${heartRow('', 'e', 'How enjoyable did you find it?', draft.e)}${heartRow('', 'i', 'How informative was it?', draft.i)}</div><p class="hint" style="margin:0">Other comments:</p><textarea id="ans" maxlength="1000" aria-label="Other comments">${esc(draft.fb)}</textarea>` : '');
   else if (q.type === 'closing')
     body = `<textarea id="ans" maxlength="1000" aria-label="${esc(q.title)}">${esc(draft.fb)}</textarea>`
       + `<h3 class="sub">Would you attend any of these Campaign Lab events in the future?</h3><div class="opts multi">${q.future.map(o => `<button type="button" class="opt" data-opt="${esc(o)}" aria-pressed="${draft.future.includes(o)}">${esc(o)}</button>`).join('')}</div>`;
@@ -593,7 +593,7 @@ card.addEventListener('click', e => {
       $('next').disabled = !has(valueOf(q));
     }
   } else if (t.dataset.rate) {
-    const n = +t.dataset.rate; if (q.type === 'awards') draft.e = n; else (draft.r[t.dataset.talk] ||= {})[t.dataset.kind] = n;
+    const n = +t.dataset.rate; if (q.type === 'awards') draft[t.dataset.kind] = n; else (draft.r[t.dataset.talk] ||= {})[t.dataset.kind] = n;
     t.parentNode.querySelectorAll('.heart').forEach((h, i) => h.classList.toggle('on', i < n)); $('next').disabled = false;
   } else if (t.id === 'next') submit(t);
   else if (t.id === 'skip') submit(null, true);

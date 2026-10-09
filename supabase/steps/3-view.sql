@@ -27,7 +27,7 @@ select
   (ratings -> 'Building Shared Ground with British South Asians: Challenges and Opportunities' ->> 'i')::int as "Informative: Building Shared Ground with British South Asians: ",
   (ratings -> 'Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit' ->> 'i')::int as "Informative: Campaigning Where Voters Actually Are: The New Dig",
   (ratings -> 'Sisters Resist! Feminists Taking On the Trolls' ->> 'i')::int as "Informative: Sisters Resist! Feminists Taking On the Trolls",
-  talks_feedback, trainings_feedback, attended_awards, awards_rating, awards_comments, future_events, comments
+  talks_feedback, trainings_feedback, attended_awards, awards_rating, awards_informative, awards_comments, future_events, comments
 from public.responses
 order by started;
 revoke all on public.responses_wide from anon, authenticated;

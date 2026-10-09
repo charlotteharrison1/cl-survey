@@ -84,11 +84,13 @@ begin
         r.attended_awards := v->>'attended';
         if v->>'attended' = 'Yes' then
           r.awards_rating := case when (v->>'rating') ~ '^[1-5]$' then (v->>'rating')::int end;
+          r.awards_informative := case when (v->>'informative') ~ '^[1-5]$' then (v->>'informative')::int end;
           fb := left(btrim(coalesce(v->>'comments', '')), 1000);
           if fb ~ '^[=+@-]' then fb := chr(39) || fb; end if;
           r.awards_comments := nullif(fb, '');
         else
           r.awards_rating := null;
+          r.awards_informative := null;
           r.awards_comments := null;
         end if;
         gained := true;
@@ -169,7 +171,7 @@ begin
     spin_results = r.spin_results, prize_won = r.prize_won, how_heard = r.how_heard, experience = r.experience,
     talks_attended = r.talks_attended, trainings_attended = r.trainings_attended, ratings = r.ratings,
     talks_feedback = r.talks_feedback, trainings_feedback = r.trainings_feedback,
-    attended_awards = r.attended_awards, awards_rating = r.awards_rating, awards_comments = r.awards_comments,
+    attended_awards = r.attended_awards, awards_rating = r.awards_rating, awards_informative = r.awards_informative, awards_comments = r.awards_comments,
     future_events = r.future_events, comments = r.comments
   where email = em;
 
