@@ -21,7 +21,7 @@ declare
     'Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit',
     'Sisters Resist! Feminists Taking On the Trolls'
   ];
-  nq          constant int := 9;      -- number of questions in index.html
+  nq          constant int := 8;      -- number of questions in index.html
   slices      constant int := 50;     -- slices on the wheel; slice 0 is gold
   win_odds    constant int := 240;    -- gold comes up 1 draw in this many
   prize_limit constant int := 5;      -- at most this many people are ever dealt a gold result
@@ -93,7 +93,20 @@ begin
         end if;
         gained := true;
       end if;
-    elsif q in ('how', 'experience', 'talks', 'trainings', 'future', 'comments') then
+    elsif q = 'closing' then
+      if jsonb_typeof(v) = 'object' then
+        fb := left(btrim(coalesce(v->>'comments', '')), 1000);
+        if fb <> '' then
+          if fb ~ '^[=+@-]' then fb := chr(39) || fb; end if;   -- stop spreadsheet apps running typed formulas
+          r.comments := fb;
+          gained := true;
+        end if;
+        if jsonb_typeof(v->'future') = 'array' then
+          select string_agg(left(btrim(x), 300), ' | ') into s from jsonb_array_elements_text(v->'future') x where btrim(x) <> '';
+          if coalesce(s, '') <> '' then r.future_events := s; gained := true; end if;
+        end if;
+      end if;
+    elsif q in ('how', 'experience', 'talks', 'trainings') then
       if jsonb_typeof(v) = 'array' then
         select string_agg(left(btrim(x), 300), ' | ') into s from jsonb_array_elements_text(v) x where btrim(x) <> '';
       elsif jsonb_typeof(v) = 'string' then
@@ -106,9 +119,7 @@ begin
           when 'how' then r.how_heard := s;
           when 'experience' then r.experience := s;
           when 'talks' then r.talks_attended := s;
-          when 'trainings' then r.trainings_attended := s;
-          when 'future' then r.future_events := s;
-          else r.comments := s;
+          else r.trainings_attended := s;
         end case;
         gained := true;
       end if;
