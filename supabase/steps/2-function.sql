@@ -137,6 +137,12 @@ begin
       r.earned := array_append(r.earned, q);
       r.coins := cardinality(r.earned);
     end if;
+    -- Saying "None" to talks or trainings means there is nothing to rate, so they also get the coin for that rating page.
+    if gained and ((q = 'talks' and r.talks_attended = 'None') or (q = 'trainings' and r.trainings_attended = 'None'))
+       and not (('rate_' || q) = any(r.earned)) then
+      r.earned := array_append(r.earned, 'rate_' || q);
+      r.coins := cardinality(r.earned);
+    end if;
   elsif act = 'bonus' then
     if r.step < nq then raise exception 'Finish the questions first'; end if;
     if not ('bonus' = any(r.earned)) then

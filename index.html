@@ -396,7 +396,7 @@ async function runSpin(getResult) {
 // ---- coins + spin ----
 function renderTray(pending = -1) {
   $('tray').innerHTML = Array.from({ length: TOTAL }, (_, i) =>
-    `<div class="slot ${i < coins ? 'has' : ''} ${i < used ? 'spent' : ''} ${i === pending ? 'pending' : ''}">${i < coins ? `<div class="coin">${COIN}</div>` : ''}</div>`).join('');
+    `<div class="slot ${i < coins ? 'has' : ''} ${i < used ? 'spent' : ''} ${[].concat(pending).includes(i) ? 'pending' : ''}">${i < coins ? `<div class="coin">${COIN}</div>` : ''}</div>`).join('');
   const left = coins - used, b = $('spinBtn'), hub = $('hub');
   $('stage').classList.toggle('locked', left <= 0 && !spinning);
   b.disabled = left <= 0 || spinning;
@@ -405,19 +405,23 @@ function renderTray(pending = -1) {
   hub.innerHTML = left > 0 || spinning ? 'SPIN' : LOCK;
 }
 function flyCoin(from, idx) {
-  renderTray(idx);
-  const slot = $('tray').children[idx];
-  if (reduce || !from || !slot) { renderTray(); return; }
-  const a = from.getBoundingClientRect(), b = slot.getBoundingClientRect();
-  const x0 = a.left + a.width / 2 - 20, y0 = a.top + a.height / 2 - 20, x1 = b.left + b.width / 2 - 20, y1 = b.top + b.height / 2 - 20;
-  const el = document.createElement('div'); el.className = 'fly'; el.innerHTML = `<div class="coin">${COIN}</div>`;
-  document.body.append(el);
-  const anim = el.animate([
-    { transform: `translate(${x0}px,${y0}px) scale(.6)` },
-    { transform: `translate(${(x0 + x1) / 2}px,${Math.min(y0, y1) - 70}px) scale(1.3)`, offset: .45 },
-    { transform: `translate(${x1}px,${y1}px) scale(1)` },
-  ], { duration: 700, easing: 'cubic-bezier(.3,.7,.4,1)' });
-  anim.onfinish = () => { el.remove(); slot.classList.remove('pending'); };
+  const idxs = [].concat(idx);
+  renderTray(idxs);
+  if (reduce || !from) { renderTray(); return; }
+  const a = from.getBoundingClientRect();
+  idxs.forEach((n, k) => {
+    const slot = $('tray').children[n]; if (!slot) return;
+    const b = slot.getBoundingClientRect();
+    const x0 = a.left + a.width / 2 - 20, y0 = a.top + a.height / 2 - 20, x1 = b.left + b.width / 2 - 20, y1 = b.top + b.height / 2 - 20;
+    const el = document.createElement('div'); el.className = 'fly'; el.innerHTML = `<div class="coin">${COIN}</div>`;
+    document.body.append(el);
+    const anim = el.animate([
+      { transform: `translate(${x0}px,${y0}px) scale(.6)` },
+      { transform: `translate(${(x0 + x1) / 2}px,${Math.min(y0, y1) - 70 - k * 25}px) scale(1.3)`, offset: .45 },
+      { transform: `translate(${x1}px,${y1}px) scale(1)` },
+    ], { duration: 700, delay: k * 160, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'backwards' });
+    anim.onfinish = () => { el.remove(); slot.classList.remove('pending'); };
+  });
 }
 // All of this person's spin results are drawn by the server once, at sign-in, and sent to the page.
 // Spinning only reveals the next one, so it never waits on a request. The server only counts a win
@@ -568,9 +572,13 @@ async function submit(from, skip) {
     if (q.key === 'talks') talksChosen = t; else trainingsChosen = t;
   }
   let next = qi + 1; while (QUESTIONS[next] && isSkipped(QUESTIONS[next])) next++;
-  if (fresh) { got.add(q.key); coins++; flyCoin(from, coins - 1); }
+  const skippedPage = (q.key === 'talks' || q.key === 'trainings') && Array.isArray(value) && value.length === 1 && value[0] === 'None' ? 'rate_' + q.key : null;
+  const earnedNow = [];
+  if (fresh) { got.add(q.key); earnedNow.push(coins++); }
+  if (fresh && skippedPage && !got.has(skippedPage)) { got.add(skippedPage); earnedNow.push(coins++); }   // nothing to rate, so they are not left a coin short
+  if (earnedNow.length) flyCoin(from, earnedNow);
   if (has(value) || skip) queue(() => api({ action: 'answer', q: q.key, value, step: next })).then(sync).catch(saveFail);
-  await sleep(fresh && !reduce ? 650 : 0);
+  await sleep(fresh && !reduce ? 650 + (earnedNow.length - 1) * 160 : 0);
   qi = next; draft = null; otherText = ''; busy = false; renderTray(); renderCard(); toCard();
   if (qi >= N) giveBonus();
 }
