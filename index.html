@@ -89,6 +89,7 @@ h1 { margin: 0; font: 400 clamp(38px, 6.5vw, 64px)/1.02 var(--display); text-tra
   background: var(--card); border-radius: 30px; padding: clamp(20px, 4vw, 34px); min-width: 0;
   box-shadow: 0 2px 0 var(--line), 0 24px 50px -20px var(--shadow); border: 1.5px solid var(--line);
 }
+.step.still { animation: none; }
 .step { animation: slide .45s cubic-bezier(.2, .9, .3, 1); display: flex; flex-direction: column; gap: 18px; }
 @keyframes slide { from { opacity: 0; transform: translateX(24px); } }
 .dots { display: flex; gap: 6px; align-items: center; }
@@ -131,7 +132,7 @@ textarea:focus, input[type=email]:focus { outline: none; border-color: var(--red
 /* win overlay */
 .overlay { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 18px; background: rgba(60, 5, 20, .6); backdrop-filter: blur(4px); }
 .overlay .card { max-width: 440px; width: 100%; text-align: center; display: flex; flex-direction: column; gap: 14px; animation: pop .5s cubic-bezier(.2, 1.4, .4, 1); }
-.overlay h2 { font-size: clamp(34px, 8vw, 46px); color: var(--accent-text); }
+.overlay h2 { font-size: clamp(26px, 6vw, 34px); color: var(--accent-text); }
 .overlay p { margin: 0; color: var(--muted); }
 input[type=email] { width: 100%; border: 2px solid var(--line); border-radius: 999px; padding: 13px 20px; background: var(--card); color: var(--ink); font: inherit; text-align: center; }
 #confetti { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 50; pointer-events: none; }
@@ -222,8 +223,8 @@ input[type=text]:focus { outline: none; border-color: var(--red); box-shadow: 0 
 
 <div class="overlay" id="win" hidden>
   <div class="card" role="dialog" aria-modal="true" aria-labelledby="winTitle">
-    <h2 id="winTitle">You won!</h2>
-    <p>The gold slice is yours: <b id="winPrize"></b>. We will email <b id="winEmail"></b> to get it to you.</p>
+    <h2 id="winTitle">🎈 Congratulations! You've won a Campaign Lab gift bag!! 🎈</h2>
+    <p>We'll be in touch soon to get the prize to you!</p>
     <button class="next" type="button" id="later">Keep going</button>
   </div>
 </div>
@@ -235,7 +236,6 @@ const CONFIG = {
   supabaseUrl: 'https://uaeazdawqwrbtmzjhptz.supabase.co',         // your Supabase project URL, e.g. https://abcdxyz.supabase.co (see supabase/setup.sql)
   supabaseKey: 'sb_publishable_tli9Mk-K1Pb-bqrwds-8-w_ChtsP_yU',         // your Supabase public key (the anon / publishable key). Safe to put here.
   eventName: 'The Campaign Fringe',  // shown in the heading
-  prize: 'a prize',        // shown under the wheel and on the win screen
 };
 // Session titles. These must match the lists in supabase/setup.sql exactly or their ratings are not saved.
 const TALK_LIST = [
@@ -262,11 +262,14 @@ const QUESTIONS = [
   { key: 'rate_talks', type: 'rate', source: 'talks', title: 'How did you find the talks?' },
   { key: 'rate_trainings', type: 'rate', source: 'trainings', title: 'How did you find the trainings?' },
   { key: 'awards', type: 'awards', title: 'Did you attend the Campaign Fringe awards ceremony?' },
+  { key: 'enjoyed', type: 'multi', list: true, other: 'Other (please specify)', title: 'What did you enjoy the most about the Fringe?', hint: 'Select all that apply', options: ['Training sessions', 'Networking', 'Talks and speakers', 'Seeing specific speakers', 'Learning about Campaign Lab', 'Seeing the stalls', 'Other (please specify)'] },
+  { key: 'more', type: 'multi', list: true, other: 'Other (please specify)', title: 'Which of these would you like to see more of in a future Campaign Fringe?', options: ['Training session', 'Hack session', 'Talks/speakers', 'Networking', 'Big name speakers', 'Interesting stalls', 'Other (please specify)'] },
+  { key: 'where', type: 'multi', list: true, other: 'Other (please specify)', title: 'Where would you like to find out about Campaign Lab events?', hint: 'Select all that apply', options: ['Reading our newsletter', 'Reading our website', 'Following us on X', 'Following us on Bluesky', 'Following us on LinkedIn', 'Joining our WhatsApp', 'Subscribing on Luma', 'Other (please specify)'] },
   { key: 'closing', type: 'closing', title: 'Do you have any further comments or feedback?', future: ['Hack night', 'A future Campaign Fringe'] },
 ];
 // ---- End edit ----
 
-const ODDS = 240, SLICES = 50, N = QUESTIONS.length, TOTAL = N + 1, TAU = Math.PI * 2, A = TAU / SLICES;
+const WIN_CHANCE = 3 / 22, SLICES = 50, N = QUESTIONS.length, TOTAL = N + 1, TAU = Math.PI * 2, A = TAU / SLICES;
 const $ = id => document.getElementById(id);
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -280,8 +283,7 @@ let saved = ''; try { saved = localStorage.getItem('email') || ''; } catch (e) {
 let qi = 0, draft = null, coins = 0, used = 0, busy = false, spinning = false, waiting = false, drawn = [], pendingCalls = 0, won = false, started = false, rot = 0;
 
 $('evt').textContent = CONFIG.eventName;
-$('winPrize').textContent = CONFIG.prize;
-$('foot').textContent = CONFIG.supabaseUrl ? 'Your answers are saved as you go.' : 'Demo mode: nothing is being saved yet. Add your Supabase details in index.html.';
+$('foot').textContent = CONFIG.supabaseUrl ? '' : 'Demo mode: nothing is being saved yet. Add your Supabase details in index.html.';
 
 // ---- backend (Supabase, or a local stand-in when no Supabase details are set) ----
 let chain = Promise.resolve();
@@ -295,7 +297,7 @@ async function demoApi(b) {
   if (b.shown) demo.shown = Math.max(demo.shown, b.shown);
   if (b.action === 'answer') { demo.step = Math.max(demo.step, b.step); if (has(b.value)) demo.earned[b.q] = 1; }
   else if (b.action === 'bonus') demo.earned.bonus = 1;
-  while (demo.results.length < TOTAL) demo.results.push(demo.results.includes(0) || Math.floor(Math.random() * ODDS) !== 0 ? 1 + Math.floor(Math.random() * (SLICES - 1)) : 0);
+  while (demo.results.length < TOTAL) demo.results.push(demo.results.includes(0) || Math.random() >= 1 - Math.pow(1 - WIN_CHANCE, 1 / TOTAL) ? 1 + Math.floor(Math.random() * (SLICES - 1)) : 0);
   return { coins: dCoins(), step: demo.step, won: demo.results.slice(0, dCoins()).includes(0), bonus: !!demo.earned.bonus, talks: [], earned: Object.keys(demo.earned), shown: demo.shown, results: demo.results.slice() };
 }
 async function api(body, tries = 3) {
@@ -440,8 +442,8 @@ async function spin() {
     const slice = drawn[used];
     const res = await runSpin(() => Promise.resolve({ slice, won: slice === 0 }));
     used++;
-    api({ action: 'seen' }, 1).catch(() => {});   // reports how many results were watched; nothing waits on it
-    if (res.won) { won = true; $('result').textContent = 'Gold! You won ' + CONFIG.prize + '.'; confetti(); showWin(); }
+    api({ action: 'seen' }, res.won ? 3 : 1).catch(() => {});   // reports how many results were watched; nothing waits on it
+    if (res.won) { won = true; $('result').textContent = 'You\'re a winner!'; confetti(); showWin(); }
     else $('result').textContent = (res.slice === 1 || res.slice === SLICES - 1) ? 'So close! One slice away from gold.' : 'No prize this time!';
   } catch (e) {
     $('result').textContent = 'The wheel could not reach the server. Check your connection and try again.';
@@ -451,7 +453,7 @@ async function spin() {
 $('spinBtn').onclick = $('hub').onclick = spin;
 
 // ---- win + confetti ----
-function showWin() { $('winEmail').textContent = email; $('win').hidden = false; setTimeout(() => $('later').focus(), 300); }
+function showWin() { $('win').hidden = false; setTimeout(() => $('later').focus(), 300); }
 $('later').onclick = () => { $('win').hidden = true; if (qi >= N) renderCard(); };
 function confetti() {
   if (reduce) return;
@@ -478,6 +480,7 @@ function valueOf(q) {
   if (q.type === 'single') return q.other && draft === q.other ? (otherText.trim() ? 'Other: ' + otherText.trim() : 'Other') : draft;
   if (q.type === 'closing') return { comments: draft.fb.trim(), future: draft.future };
   if (q.type === 'awards') return draft.attended ? { attended: draft.attended, rating: draft.attended === 'Yes' ? draft.e : 0, informative: draft.attended === 'Yes' ? draft.i : 0, comments: draft.attended === 'Yes' ? draft.fb : '' } : '';
+  if (q.type === 'multi' && q.other) return draft.map(x => x === q.other ? (otherText.trim() ? 'Other: ' + otherText.trim() : 'Other') : x);
   if (q.type !== 'rate') return draft;
   const ratings = {}, items = ratingItems(q);
   for (const [i, x] of Object.entries(draft.r)) if (x.e || x.i) ratings[items[i]] = x;
@@ -512,7 +515,7 @@ card.addEventListener('submit', async e => {
     renderWelcome(err.fatal ? 'The server replied: ' + err.message : 'Could not connect. Check your connection and try again.');
   });
 });
-function renderCard() {
+function renderCard(still) {
   if (!started) return renderWelcome();
   if (qi >= N) return renderDone();
   const q = QUESTIONS[qi];
@@ -520,7 +523,7 @@ function renderCard() {
   let body = '';
   if (q.type === 'single' || q.type === 'multi')
     body = `<div class="opts ${q.list ? 'list' : ''} ${q.type}">${q.options.map(o => `<button type="button" class="opt" data-opt="${esc(o)}" aria-pressed="${q.type === 'multi' ? draft.includes(o) : draft === o}">${esc(o)}</button>`).join('')}</div>`
-      + (q.other && draft === q.other ? `<input type="text" id="other" maxlength="200" placeholder="Please specify" aria-label="Please specify" value="${esc(otherText)}">` : '');
+      + (q.other && (q.type === 'single' ? draft === q.other : draft.includes(q.other)) ? `<input type="text" id="other" maxlength="200" placeholder="Please specify" aria-label="Please specify" value="${esc(otherText)}">` : '');
   else if (q.type === 'rate')
     body = ratingItems(q).map((t, i) => `<div class="talk">${heartRow(i, 'e', `How much did you enjoy <b>${esc(t)}</b>?`, (draft.r[i] || {}).e || 0)}${heartRow(i, 'i', `How informative was <b>${esc(t)}</b>?`, (draft.r[i] || {}).i || 0)}</div>`).join('')
       + `<p class="hint" style="margin:0">Do you have any specific feedback for these events?</p><textarea id="ans" maxlength="1000" aria-label="Do you have any specific feedback for these events?">${esc(draft.fb)}</textarea>`;
@@ -531,7 +534,7 @@ function renderCard() {
     body = `<textarea id="ans" maxlength="1000" aria-label="${esc(q.title)}">${esc(draft.fb)}</textarea>`
       + `<h3 class="sub">Would you attend any of these Campaign Lab events in the future?</h3><div class="opts multi">${q.future.map(o => `<button type="button" class="opt" data-opt="${esc(o)}" aria-pressed="${draft.future.includes(o)}">${esc(o)}</button>`).join('')}</div>`;
   else body = `<textarea id="ans" maxlength="1000" aria-label="${esc(q.title)}">${esc(draft)}</textarea>`;
-  card.innerHTML = `<div class="step">${dots()}${q.title ? `<h2>${esc(q.title)}</h2>` : ''}${q.hint ? `<p class="hint">${esc(q.hint)}</p>` : ''}${body}
+  card.innerHTML = `<div class="step${still ? ' still' : ''}">${dots()}${q.title ? `<h2>${esc(q.title)}</h2>` : ''}${q.hint ? `<p class="hint">${esc(q.hint)}</p>` : ''}${body}
     <div class="row">${qi > 0 ? '<button class="back" type="button" id="back">Back</button>' : ''}<button class="next" type="button" id="next" ${has(valueOf(q)) ? '' : 'disabled'}>${qi === N - 1 ? 'Finish' : 'Next'}</button>
     <button class="skip" type="button" id="skip">Skip, no coin</button>${got.has(q.key) ? '' : '<span class="earn">+1 coin</span>'}</div></div>`;
 }
@@ -539,7 +542,7 @@ function renderDone() {
   card.innerHTML = `<div class="step done">${dots().replace(/<span class="count">.*<\/span>/, '')}<h2>Thank you for your feedback!</h2>
     <p>Here's an extra spin.</p>
     <div class="row"><button class="back" type="button" id="back">Back</button></div>
-    ${won ? `<p><b>You won ${esc(CONFIG.prize)}. We will email ${esc(email)}.</b></p>` : ''}</div>`;
+    ${won ? `<p><b>You're a winner!</b></p>` : ''}</div>`;
 }
 const toCard = () => { if (innerWidth < 860) card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); };
 const sync = r => { absorb(r); renderTray(); };
@@ -577,18 +580,19 @@ card.addEventListener('click', e => {
   if (qi >= N) return;
   const q = QUESTIONS[qi];
   if (t.dataset.opt !== undefined) {
-    if (q.type === 'awards') { draft.attended = t.dataset.opt; renderCard(); return; }
+    if (q.type === 'awards') { draft.attended = t.dataset.opt; renderCard(true); return; }
     if (q.type === 'closing') {
       const i = draft.future.indexOf(t.dataset.opt); i < 0 ? draft.future.push(t.dataset.opt) : draft.future.splice(i, 1);
       t.setAttribute('aria-pressed', i < 0); $('next').disabled = !has(valueOf(q)); return;
     }
     if (q.type === 'single') {
-      if (q.other && t.dataset.opt === q.other) { draft = q.other; renderCard(); const o = $('other'); if (o) o.focus(); return; }
+      if (q.other && t.dataset.opt === q.other) { draft = q.other; renderCard(true); const o = $('other'); if (o) o.focus(); return; }
       draft = t.dataset.opt; t.parentNode.querySelectorAll('.opt').forEach(o => o.setAttribute('aria-pressed', o === t)); $('next').disabled = false;
     } else {
       const v = t.dataset.opt, i = draft.indexOf(v);
       if (i >= 0) draft.splice(i, 1);
       else { draft.push(v); if (q.none) draft = draft.filter(x => v === q.none ? x === v : x !== q.none); }   // "None" and real picks switch each other off
+      if (v === q.other) { renderCard(true); const o = $('other'); if (o && i < 0) o.focus(); return; }   // show or hide the "please specify" box
       card.querySelectorAll('.opt').forEach(o => o.setAttribute('aria-pressed', draft.includes(o.dataset.opt)));
       $('next').disabled = !has(valueOf(q));
     }

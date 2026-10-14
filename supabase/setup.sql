@@ -12,6 +12,7 @@ create table if not exists public.responses (
   spins_shown      int         not null default 0,
   spin_results     int[]       not null default '{}',
   prize_won        boolean     not null default false,
+  win_seen_at      timestamptz,
   how_heard        text,
   experience       text,
   talks_attended   text,
@@ -23,11 +24,18 @@ create table if not exists public.responses (
   awards_rating    int,
   awards_informative int,
   awards_comments  text,
+  enjoyed_most     text,
+  want_more_of     text,
+  find_events_via  text,
   future_events    text,
   comments         text
 );
 -- Upgrade an older version of the table in place (does nothing on a fresh install).
 alter table public.responses
+  add column if not exists win_seen_at timestamptz,
+  add column if not exists enjoyed_most text,
+  add column if not exists want_more_of text,
+  add column if not exists find_events_via text,
   add column if not exists trainings_attended text,
   add column if not exists talks_feedback text,
   add column if not exists trainings_feedback text,
@@ -63,10 +71,10 @@ declare
     'Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit',
     'Sisters Resist! Feminists Taking On the Trolls'
   ];
-  nq          constant int := 8;      -- number of questions in index.html
+  nq          constant int := 11;     -- number of questions in index.html
   slices      constant int := 50;     -- slices on the wheel; slice 0 is gold
-  win_odds    constant int := 240;    -- gold comes up 1 draw in this many
-  prize_limit constant int := 5;      -- at most this many people are ever dealt a gold result
+  win_chance  constant double precision := 3.0 / 22.0;  -- chance that a person who earns every spin is dealt a gold result (3 in 22)
+  prize_limit constant int := 3;      -- at most this many people are ever dealt a gold result
   total       constant int := nq + 1; -- one result per question plus the bonus spin
 
   em   text := lower(btrim(coalesce(req->>'email', '')));
@@ -150,7 +158,7 @@ begin
           if coalesce(s, '') <> '' then r.future_events := s; gained := true; end if;
         end if;
       end if;
-    elsif q in ('how', 'experience', 'talks', 'trainings') then
+    elsif q in ('how', 'experience', 'talks', 'trainings', 'enjoyed', 'more', 'where') then
       if jsonb_typeof(v) = 'array' then
         select string_agg(left(btrim(x), 300), ' | ') into s from jsonb_array_elements_text(v) x where btrim(x) <> '';
       elsif jsonb_typeof(v) = 'string' then
@@ -163,7 +171,10 @@ begin
           when 'how' then r.how_heard := s;
           when 'experience' then r.experience := s;
           when 'talks' then r.talks_attended := s;
-          else r.trainings_attended := s;
+          when 'trainings' then r.trainings_attended := s;
+          when 'enjoyed' then r.enjoyed_most := s;
+          when 'more' then r.want_more_of := s;
+          else r.find_events_via := s;
         end case;
         gained := true;
       end if;
@@ -187,12 +198,13 @@ begin
   end if;
 
   -- Deal every spin result this person can ever get, once, on their first request.
-  -- Gold comes up 1 in win_odds, at most once per person, and never after prize_limit people have one.
+  -- Each result has a small chance of gold, set so that over all total results a person has win_chance of getting one.
+  -- At most one gold per person, and never after prize_limit people have one.
   if cardinality(r.spin_results) < total then
     perform pg_advisory_xact_lock(7001);   -- one person at a time, so the prize limit cannot be overshot
     select count(*) into golds from responses where email <> em and 0 = any(spin_results);
     while cardinality(r.spin_results) < total loop
-      if golds < prize_limit and not (0 = any(r.spin_results)) and floor(random() * win_odds)::int = 0 then
+      if golds < prize_limit and not (0 = any(r.spin_results)) and random() < 1 - power(1 - win_chance, 1.0 / total) then
         r.spin_results := array_append(r.spin_results, 0);
         golds := golds + 1;
       else
@@ -207,13 +219,16 @@ begin
   if earned_spins > 0 and 0 = any(r.spin_results[1:earned_spins]) then r.prize_won := true; end if;
   n := case when (req->>'shown') ~ '^[0-9]{1,3}$' then (req->>'shown')::int else 0 end;
   if n > 0 then r.spins_shown := greatest(r.spins_shown, least(earned_spins, n)); end if;
+  -- Note when a winner has actually watched the spin that landed on gold (the page reports how many spins were watched).
+  if r.prize_won and r.win_seen_at is null and r.spins_shown >= array_position(r.spin_results, 0) then r.win_seen_at := now(); end if;
 
   update responses set
     step = r.step, earned = r.earned, coins = r.coins, spins_drawn = r.spins_drawn, spins_shown = r.spins_shown,
-    spin_results = r.spin_results, prize_won = r.prize_won, how_heard = r.how_heard, experience = r.experience,
+    spin_results = r.spin_results, prize_won = r.prize_won, win_seen_at = r.win_seen_at, how_heard = r.how_heard, experience = r.experience,
     talks_attended = r.talks_attended, trainings_attended = r.trainings_attended, ratings = r.ratings,
     talks_feedback = r.talks_feedback, trainings_feedback = r.trainings_feedback,
     attended_awards = r.attended_awards, awards_rating = r.awards_rating, awards_informative = r.awards_informative, awards_comments = r.awards_comments,
+    enjoyed_most = r.enjoyed_most, want_more_of = r.want_more_of, find_events_via = r.find_events_via,
     future_events = r.future_events, comments = r.comments
   where email = em;
 
@@ -234,6 +249,9 @@ drop view if exists public.responses_wide;
 create view public.responses_wide as
 select
   email, started, step, coins, spins_drawn, spins_shown, spin_results, prize_won,
+  -- Winners only: true once they have watched the spin that landed on gold, false if not yet. Blank for everyone else.
+  case when prize_won then (win_seen_at is not null or spins_shown >= array_position(spin_results, 0)) end as win_seen,
+  win_seen_at,
   how_heard, experience, talks_attended, trainings_attended,
   (ratings -> 'Beyond the Algorithm: Building Authentic Voices in the New Media Landscape' ->> 'e')::int as "Enjoyed: Beyond the Algorithm: Building Authentic Voices in",
   (ratings -> 'Fighting the Right: What Works?' ->> 'e')::int as "Enjoyed: Fighting the Right: What Works?",
@@ -257,7 +275,8 @@ select
   (ratings -> 'Building Shared Ground with British South Asians: Challenges and Opportunities' ->> 'i')::int as "Informative: Building Shared Ground with British South Asians: ",
   (ratings -> 'Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit' ->> 'i')::int as "Informative: Campaigning Where Voters Actually Are: The New Dig",
   (ratings -> 'Sisters Resist! Feminists Taking On the Trolls' ->> 'i')::int as "Informative: Sisters Resist! Feminists Taking On the Trolls",
-  talks_feedback, trainings_feedback, attended_awards, awards_rating, awards_informative, awards_comments, future_events, comments
+  talks_feedback, trainings_feedback, attended_awards, awards_rating, awards_informative, awards_comments,
+  enjoyed_most, want_more_of, find_events_via, future_events, comments
 from public.responses
 order by started;
 revoke all on public.responses_wide from anon, authenticated;

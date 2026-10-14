@@ -13,6 +13,7 @@ create table if not exists public.responses (
   spins_shown      int         not null default 0,
   spin_results     int[]       not null default '{}',
   prize_won        boolean     not null default false,
+  win_seen_at      timestamptz,
   how_heard        text,
   experience       text,
   talks_attended   text,
@@ -24,11 +25,18 @@ create table if not exists public.responses (
   awards_rating    int,
   awards_informative int,
   awards_comments  text,
+  enjoyed_most     text,
+  want_more_of     text,
+  find_events_via  text,
   future_events    text,
   comments         text
 );
 -- Upgrade an older version of the table in place (does nothing on a fresh install).
 alter table public.responses
+  add column if not exists win_seen_at timestamptz,
+  add column if not exists enjoyed_most text,
+  add column if not exists want_more_of text,
+  add column if not exists find_events_via text,
   add column if not exists trainings_attended text,
   add column if not exists talks_feedback text,
   add column if not exists trainings_feedback text,

@@ -4,6 +4,9 @@ drop view if exists public.responses_wide;
 create view public.responses_wide as
 select
   email, started, step, coins, spins_drawn, spins_shown, spin_results, prize_won,
+  -- Winners only: true once they have watched the spin that landed on gold, false if not yet. Blank for everyone else.
+  case when prize_won then (win_seen_at is not null or spins_shown >= array_position(spin_results, 0)) end as win_seen,
+  win_seen_at,
   how_heard, experience, talks_attended, trainings_attended,
   (ratings -> 'Beyond the Algorithm: Building Authentic Voices in the New Media Landscape' ->> 'e')::int as "Enjoyed: Beyond the Algorithm: Building Authentic Voices in",
   (ratings -> 'Fighting the Right: What Works?' ->> 'e')::int as "Enjoyed: Fighting the Right: What Works?",
@@ -27,7 +30,8 @@ select
   (ratings -> 'Building Shared Ground with British South Asians: Challenges and Opportunities' ->> 'i')::int as "Informative: Building Shared Ground with British South Asians: ",
   (ratings -> 'Campaigning Where Voters Actually Are: The New Digital Campaign Toolkit' ->> 'i')::int as "Informative: Campaigning Where Voters Actually Are: The New Dig",
   (ratings -> 'Sisters Resist! Feminists Taking On the Trolls' ->> 'i')::int as "Informative: Sisters Resist! Feminists Taking On the Trolls",
-  talks_feedback, trainings_feedback, attended_awards, awards_rating, awards_informative, awards_comments, future_events, comments
+  talks_feedback, trainings_feedback, attended_awards, awards_rating, awards_informative, awards_comments,
+  enjoyed_most, want_more_of, find_events_via, future_events, comments
 from public.responses
 order by started;
 revoke all on public.responses_wide from anon, authenticated;
