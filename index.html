@@ -56,7 +56,7 @@ h1 { margin: 0; font: 400 clamp(38px, 6.5vw, 64px)/1.02 var(--display); text-tra
 .hub.shake { animation: shake .45s; }
 @keyframes shake { 20%, 60% { transform: translateX(-5px) rotate(-6deg); } 40%, 80% { transform: translateX(5px) rotate(6deg); } }
 
-.tray { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; min-height: 44px; }
+.tray { max-width: 260px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; min-height: 44px; }
 .slot { width: 40px; height: 40px; border-radius: 50%; border: 2px dashed var(--pink); display: grid; place-items: center; transition: border-color .3s; }
 .coin {
   width: 100%; height: 100%; border-radius: 50%; display: grid; place-items: center; color: var(--gold-ink);
@@ -152,7 +152,7 @@ input[type=text] { width: 100%; border: 2px solid var(--line); border-radius: 16
 input[type=text]:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 4px var(--blush); }
 @media (max-width: 859px) {
   .stage { gap: 10px; }
-  .tray { gap: 5px; min-height: 30px; flex-wrap: nowrap; }
+  .tray { gap: 5px; min-height: 30px; max-width: 230px; }
   .slot { width: 30px; height: 30px; }
   .result { min-height: 0; }
   .top { margin-bottom: 14px; }
@@ -269,7 +269,7 @@ const QUESTIONS = [
 ];
 // ---- End edit ----
 
-const WIN_CHANCE = 3 / 22, SLICES = 50, N = QUESTIONS.length, TOTAL = N + 1, TAU = Math.PI * 2, A = TAU / SLICES;
+const WIN_CHANCE = 3 / 18, SLICES = 50, N = QUESTIONS.length, TOTAL = N + 1, TAU = Math.PI * 2, A = TAU / SLICES;
 const $ = id => document.getElementById(id);
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -539,8 +539,8 @@ function renderCard(still) {
     <button class="skip" type="button" id="skip">Skip, no coin</button>${got.has(q.key) ? '' : '<span class="earn">+1 coin</span>'}</div></div>`;
 }
 function renderDone() {
-  card.innerHTML = `<div class="step done">${dots().replace(/<span class="count">.*<\/span>/, '')}<h2>Thank you for your feedback!</h2>
-    <p>Here's an extra spin.</p>
+  card.innerHTML = `<div class="step done">${dots().replace(/<span class="count">.*<\/span>/, '')}<h2>Thank you for completing our survey and attending the Campaign Fringe!</h2>
+    <p>Your feedback is super helpful to us.</p>
     <div class="row"><button class="back" type="button" id="back">Back</button></div>
     ${won ? `<p><b>You're a winner!</b></p>` : ''}</div>`;
 }

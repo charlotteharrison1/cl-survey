@@ -73,7 +73,7 @@ declare
   ];
   nq          constant int := 11;     -- number of questions in index.html
   slices      constant int := 50;     -- slices on the wheel; slice 0 is gold
-  win_chance  constant double precision := 3.0 / 22.0;  -- chance that a person who earns every spin is dealt a gold result (3 in 22)
+  win_chance  constant double precision := 3.0 / 18.0;  -- chance that a person who earns every spin is dealt a gold result (3 in 18)
   prize_limit constant int := 3;      -- at most this many people are ever dealt a gold result
   total       constant int := nq + 1; -- one result per question plus the bonus spin
 
