@@ -128,6 +128,8 @@ textarea:focus, input[type=email]:focus { outline: none; border-color: var(--red
 .earn { font-size: 14px; color: var(--muted); }
 .done p { margin: 0; color: var(--muted); }
 .foot { text-align: center; font-size: 13px; color: var(--muted); margin: 34px 0 0; }
+.foot a, .hint a { color: inherit; text-underline-offset: 3px; }
+#foot:not(:empty)::after { content: ' \00b7  '; }
 
 /* win overlay */
 .overlay { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 18px; background: rgba(60, 5, 20, .6); backdrop-filter: blur(4px); }
@@ -218,7 +220,7 @@ input[type=text]:focus { outline: none; border-color: var(--red); box-shadow: 0 
     </section>
     <section class="card" id="card" aria-live="polite"></section>
   </div>
-  <p class="foot" id="foot"></p>
+  <p class="foot"><span id="foot"></span><a href="privacy.html">Privacy policy</a></p>
 </main>
 
 <div class="overlay" id="win" hidden>
@@ -255,7 +257,7 @@ const TRAINING_LIST = [
 ];
 // Each question below earns one coin, and the thank-you earns a bonus spin. Signing in earns nothing.
 const QUESTIONS = [
-  { key: 'how', type: 'single', list: true, other: 'Other (please specify)', title: 'How did you hear about the Fringe?', options: ['Campaign Lab social media', 'Campaign Lab newsletter', 'Word of mouth', 'Labour conference app', 'Leaflet distributed at Labour conference', 'Social media post from someone other than Campaign Lab', 'Came to support a specific talk or training', 'Previous Campaign Lab Event / Previous Campaign Fringe', 'Other (please specify)'] },
+  { key: 'how', type: 'single', list: true, other: 'Other (please specify)', title: 'How did you hear about the Fringe?', options: ['Campaign Lab social media', 'Campaign Lab newsletter', 'Word of mouth', 'Labour conference app', 'Leaflet distributed at Labour conference', 'Social media post from someone other than Campaign Lab', 'Came to support a specific talk or training', 'Previous Campaign Lab Event / Previous Campaign Fringe', "I didn't attend the Campaign Fringe", 'Other (please specify)'] },
   { key: 'experience', type: 'single', list: true, title: 'Which of these best describes your experience of the Fringe?', options: ['I came for a specific event and stayed for more', 'I came for a specific event and only stayed for that event', 'I came for the Fringe as a whole', "I came to see the stalls and didn't attend a talk or training"] },
   { key: 'talks', type: 'multi', list: true, none: 'None', title: 'Which talks did you attend?', options: TALK_LIST.concat('None') },
   { key: 'trainings', type: 'multi', list: true, none: 'None', title: 'Which training sessions did you attend?', options: TRAINING_LIST.concat('None') },
@@ -495,6 +497,7 @@ const heartRow = (i, kind, label, val) => `<div class="rrow"><span>${label}</spa
 function renderWelcome(msg = '') {
   card.innerHTML = `<form class="step" id="login" novalidate><h2>Enter your email</h2>
     <input type="email" id="loginEmail" required autocomplete="email" placeholder="you@example.com" aria-label="Your email" value="${esc(saved)}">
+    <p class="hint">By continuing you agree to our <a href="privacy.html" target="_blank" rel="noopener">privacy policy</a>.</p>
     <p class="hint" id="loginErr" role="alert" style="color:var(--accent-text)">${esc(msg)}</p>
     <div class="row"><button class="next" type="submit" id="go">Next</button></div></form>`;
 }
