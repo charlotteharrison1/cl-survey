@@ -80,7 +80,7 @@ h1 { margin: 0; font: 400 clamp(38px, 6.5vw, 64px)/1.02 var(--display); text-tra
 @media (max-width: 859px) {
   .spin { position: fixed; z-index: 10; left: 0; right: 0; margin: auto; width: max-content; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
 }
-.odds { margin: 0; font-size: 14px; color: var(--muted); text-align: center; }
+.odds { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); text-align: center; }
 .odds b { color: var(--accent-text); }
 .result { margin: 0; min-height: 3em; text-align: center; font-weight: 600; max-width: 34ch; }
 
@@ -211,11 +211,11 @@ input[type=text]:focus { outline: none; border-color: var(--red); box-shadow: 0 
       <div class="wheel">
         <canvas id="cv" aria-hidden="true"></canvas>
         <svg class="pointer" id="pointer" viewBox="0 0 40 52" aria-hidden="true"><path d="M20 50 4 18C-2 6 8 0 20 0s22 6 16 18z" fill="var(--red)" stroke="var(--card)" stroke-width="3"/><circle cx="20" cy="15" r="5" fill="var(--card)"/></svg>
-        <button class="hub" id="hub" type="button" aria-label="Spin the wheel"></button>
+        <button class="hub" id="hub" type="button" aria-label="Spin now!"></button>
       </div>
       <div class="tray" id="tray"></div>
       <button class="spin" id="spinBtn" type="button"></button>
-      <p class="odds">You get another chance to enter for every question you answer!</p>
+      <p class="odds">You can spin after every question answered!</p>
       <p class="result" id="result" role="status" aria-live="polite"></p>
     </section>
     <section class="card" id="card" aria-live="polite"></section>
@@ -403,7 +403,7 @@ function renderTray(pending = -1) {
   $('stage').classList.toggle('locked', left <= 0 && !spinning);
   b.disabled = left <= 0 || spinning;
   b.classList.toggle('ready', left > 0 && !spinning);
-  b.textContent = spinning ? (waiting ? 'Getting your spin…' : 'Spinning…') : left > 0 ? `Spin the wheel (${left})` : !started ? 'Enter your email to unlock' : coins === 0 ? 'Answer a question to unlock' : qi >= N ? 'No spins left' : 'Answer to earn a spin';
+  b.textContent = spinning ? (waiting ? 'Getting your spin…' : 'Spinning…') : left > 0 ? `Spin now! (${left})` : !started ? 'Enter your email to unlock' : coins === 0 ? 'Answer a question to unlock' : qi >= N ? 'No spins left' : 'Answer to earn a spin';
   hub.innerHTML = left > 0 || spinning ? 'SPIN' : LOCK;
 }
 function flyCoin(from, idx) {
